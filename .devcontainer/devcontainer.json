@@ -1,0 +1,23 @@
+{
+  "name": "CareerGPS Demo",
+  "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11",
+  "forwardPorts": [5000],
+  "postCreateCommand": "pip install -r requirements.txt",
+  "postAttachCommand": [
+    "echo '🚀 CareerGPS Ready!'",
+    "echo '   1. Set secret: export SECRET_KEY=$(python -c \"import secrets; print(secrets.token_hex(16))\")'",
+    "echo '   2. Run: python app.py'",
+    "echo '   3. Visit: http://localhost:5000'"
+  ],
+  "workspaceFolder": "/workspaces/careergps",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.terminal.activateEnvironment": true
+      },
+      "extensions": [
+        "ms-python.python"
+      ]
+    }
+  }
+}
