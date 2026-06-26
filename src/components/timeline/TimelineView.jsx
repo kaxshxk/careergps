@@ -10,6 +10,7 @@ import {
 } from "../../services/localStorageService";
 import TimelineNode from "./TimelineNode";
 import TimelineDetailPanel from "./TimelineDetailPanel";
+import ReOnboardingWizard from "../roadmap/ReOnboardingWizard";
 
 /**
  * Full-screen RPG-style vertical timeline view.
@@ -42,6 +43,7 @@ export default function TimelineView({
   const hoverTimeoutRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const [youAreHereStage, setYouAreHereStage] = useState("");
+  const [showReOnboard, setShowReOnboard] = useState(false);
 
   // Build timeline data
   const timeline = useMemo(
@@ -95,12 +97,30 @@ export default function TimelineView({
   const toggleMilestone = useCallback((milestoneId) => {
     setCompletedMilestones((current) => {
       const next = new Set(current);
-      if (next.has(milestoneId)) next.delete(milestoneId);
-      else next.add(milestoneId);
+      if (next.has(milestoneId)) {
+        // Unchecking
+        next.delete(milestoneId);
+        
+        // Cascade uncheck: if this is a main milestone, uncheck all subsequent ones
+        const mainMilestones = roadmap?.goalsToAchieve?.milestones || [];
+        const index = mainMilestones.findIndex(m => m.id === milestoneId);
+        
+        if (index !== -1) {
+          for (let i = index + 1; i < mainMilestones.length; i++) {
+            next.delete(mainMilestones[i].id);
+            if (mainMilestones[i].prerequisites) {
+              mainMilestones[i].prerequisites.forEach(pre => next.delete(pre.id));
+            }
+          }
+        }
+      } else {
+        // Checking
+        next.add(milestoneId);
+      }
       saveCompletedMilestones(next);
       return next;
     });
-  }, []);
+  }, [roadmap]);
 
   // ── Hover handlers ──
   const handleHover = useCallback(
@@ -249,6 +269,7 @@ export default function TimelineView({
               onToggleMilestone={toggleMilestone}
               onToggleSubTask={toggleMilestone}
               onClose={handleClosePanel}
+              onTriggerReOnboard={() => setShowReOnboard(true)}
               currentPhase={currentPhase}
               phaseCompleted={phaseCompleted}
               profile={profile}
@@ -256,6 +277,18 @@ export default function TimelineView({
           </div>
         </div>
       </div>
+
+      {showReOnboard && (
+        <ReOnboardingWizard
+          profile={profile}
+          phase={currentPhase}
+          onComplete={(nextProfile) => {
+            setShowReOnboard(false);
+            onProfileUpdate(nextProfile);
+          }}
+          onClose={() => setShowReOnboard(false)}
+        />
+      )}
     </GradientBackground>
   );
 }

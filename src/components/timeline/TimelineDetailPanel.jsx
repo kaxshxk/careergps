@@ -166,6 +166,31 @@ export default function TimelineDetailPanel({
         </div>
       )}
 
+      {/* Stage Promotion banner */}
+      {isExpanded && phaseCompleted && currentPhase < 4 && (
+        <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-4 text-emerald-950 shadow-sm border-l-4 border-l-emerald-500 mb-4 animate-fade-in">
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="flex items-center gap-1.5 text-emerald-700 font-extrabold text-[10px] uppercase tracking-wider mb-1">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white font-extrabold text-[10px] font-mono">✓</span>
+                <span>Phase {currentPhase} Completed!</span>
+              </div>
+              <h4 className="text-sm font-bold text-slate-900 leading-tight">Ready for your next stage?</h4>
+              <p className="mt-1 text-[11px] text-slate-600">
+                Unlock Phase {currentPhase + 1} of your career journey by updating your profile.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onTriggerReOnboard?.()}
+              className="w-full py-2.5 rounded-lg text-xs font-extrabold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-sm hover:shadow transition-all duration-300 transform active:scale-[0.98]"
+            >
+              Start Phase {currentPhase + 1} Onboarding
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mark complete button (expanded, non-decision, non-locked) */}
       {isExpanded && !isDecision && node.status !== "locked" && (
         <button

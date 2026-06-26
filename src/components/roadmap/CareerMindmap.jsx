@@ -169,7 +169,7 @@ function getInitialExpandedNodeIds(treeData, userStage) {
   return expanded;
 }
 
-export default function CareerMindmap({ treeData, completedMilestones, onNodeClick, onNodeHover, activeNode, profile }) {
+export default function CareerMindmap({ treeData, completedMilestones, onNodeClick, onNodeHover, onCanvasClick, activeNode, profile }) {
   const svgRef = useRef(null);
   const gRef = useRef(null);
   const [dimensions, setDimensions] = useState({ w: 1200, h: 800 });
@@ -362,12 +362,15 @@ export default function CareerMindmap({ treeData, completedMilestones, onNodeCli
     });
 
     // ── White Background ──
-    svg.append("rect")
+    const bgRect = svg.append("rect")
       .attr("width", "100%").attr("height", "100%")
       .attr("fill", "#ffffff");
-    svg.append("rect")
+    const gridRect = svg.append("rect")
       .attr("width", "100%").attr("height", "100%")
       .attr("fill", `url(#${patternId})`);
+
+    bgRect.on("click", () => onCanvasClick?.());
+    gridRect.on("click", () => onCanvasClick?.());
 
     // ── Zoomable group ──
     const g = svg.append("g")
@@ -469,6 +472,8 @@ export default function CareerMindmap({ treeData, completedMilestones, onNodeCli
             return next;
           });
         }
+        
+        onNodeClick?.(d.data);
       });
 
     nodeG.transition().duration(500).delay((d, i) => i * 18)

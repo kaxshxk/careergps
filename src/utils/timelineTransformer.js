@@ -368,7 +368,7 @@ export function buildTimeline(roadmap, profile, completedMilestones) {
       yearLabel: `${certYear}`,
       timeLabel: `Certification ${idx + 1}`,
       phase: "certifications",
-      status: completedMilestones.has(cert.id) ? "completed" : "locked",
+      status: completedMilestones.has(cert.id) ? "completed" : "current",
       milestoneId: cert.id,
       subTasks: [],
       completedSubTasks: 0,

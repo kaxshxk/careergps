@@ -1,9 +1,9 @@
-from flask import Flask, render_template, jsonify
+from flask import Blueprint, render_template, jsonify, current_app
 import requests
 
-app = Flask(__name__)
+market_blueprint = Blueprint('market', __name__)
 
-@app.route('/get-market-trends', methods=['GET'])
+@market_blueprint.route('/get-market-trends', methods=['GET'])
 def get_market_trends():
     """
     Route that fetches job market trends from an external API service.
@@ -17,5 +17,5 @@ def get_market_trends():
         data = response.json()
         return jsonify(data)
     except Exception as e:
-        app.logger.error(f"Error in get_market_trends: {str(e)}")
-        return render_template('error.html', message="Service temporarily unavailable"), 503
+        current_app.logger.error(f"Error in get_market_trends: {str(e)}")
+        return jsonify(error="Service temporarily unavailable"), 503

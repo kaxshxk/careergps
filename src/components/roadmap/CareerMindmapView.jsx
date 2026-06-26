@@ -52,12 +52,34 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     () => new Set(loadCompletedMilestones())
   );
   const [activeNode, setActiveNode] = useState(null);
+  const [isLocked, setIsLocked] = useState(false);
   const [showLegend, setShowLegend] = useState(true);
 
   // ── Build mindmap tree ──
   const treeData = useMemo(() => {
     return buildMindmapTree(profile, roadmap, completedMilestones);
   }, [profile, roadmap, completedMilestones, financialTier]); // eslint-disable-line
+
+  const handleNodeClick = useCallback((node) => {
+    setActiveNode(node);
+    setIsLocked(true);
+  }, []);
+
+  const handleNodeHover = useCallback((node) => {
+    if (!isLocked) {
+      setActiveNode(node);
+    }
+  }, [isLocked]);
+
+  const handleClosePopover = useCallback(() => {
+    setIsLocked(false);
+    setActiveNode(null);
+  }, []);
+
+  const handleCanvasClick = useCallback(() => {
+    setIsLocked(false);
+    setActiveNode(null);
+  }, []);
 
   // ── Completion toggle ──
   const handleToggleComplete = useCallback((milestoneId) => {
@@ -183,7 +205,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
 
         {/* Centre — progress bar */}
         <div style={{ flex: 1, maxWidth: 320, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", justifyBetween: "space-between", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
               Progress
             </span>
@@ -278,8 +300,9 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
           <CareerMindmap
             treeData={treeData}
             completedMilestones={completedMilestones}
-            onNodeClick={setActiveNode}
-            onNodeHover={setActiveNode}
+            onNodeClick={handleNodeClick}
+            onNodeHover={handleNodeHover}
+            onCanvasClick={handleCanvasClick}
             activeNode={activeNode}
             profile={profile}
           />
@@ -382,7 +405,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         <div style={{ width: 380, height: "100%", flexShrink: 0, borderLeft: "1px solid #e2e8f0", zIndex: 60 }}>
           <MindmapNodePopover
             node={activeNode}
-            onClose={() => setActiveNode(null)}
+            onClose={handleClosePopover}
             onToggleComplete={handleToggleComplete}
             completedMilestones={completedMilestones}
             profile={profile}

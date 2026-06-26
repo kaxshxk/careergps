@@ -3,6 +3,7 @@ import secrets
 import re
 from flask import Flask, render_template, request, jsonify
 from flask_wtf.csrf import CSRFProtect
+from routes import market_blueprint
 
 app = Flask(__name__)
 # WARNING: Never commit real SECRET_KEY! Set via environment variable.
@@ -10,6 +11,7 @@ app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(16)
 
 # Initialize CSRF Protection
 csrf = CSRFProtect(app)
+app.register_blueprint(market_blueprint)
 
 @app.route('/')
 def home():
