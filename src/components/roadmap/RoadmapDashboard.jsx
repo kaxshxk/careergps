@@ -17,6 +17,7 @@ import {
   getStageLabel,
 } from "../../utils/roadmapHelpers";
 import DeepOptimizationWizard from "./DeepOptimizationWizard";
+import ReOnboardingWizard from "./ReOnboardingWizard";
 import ResumeAnalyzer from "../pathforge/ResumeAnalyzer";
 import MarketIntelligence from "../pathforge/MarketIntelligence";
 import CareerChat from "../pathforge/CareerChat";
@@ -55,6 +56,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   const [deepRoadmap, setDeepRoadmap] = useState(() => loadDeepRoadmap());
   const [resumeAnalysis, setResumeAnalysis] = useState(() => loadResumeAnalysis());
   const [showWizard, setShowWizard] = useState(false);
+  const [showReOnboard, setShowReOnboard] = useState(false);
   const [completedDeepWeeks, setCompletedDeepWeeks] = useState(() => {
     const raw = localStorage.getItem("career-gps:completed-deep-weeks");
     return raw ? JSON.parse(raw) : [];
@@ -324,6 +326,8 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             saveDeepRoadmap={saveDeepRoadmap}
             setCompletedDeepWeeks={setCompletedDeepWeeks}
             phaseCompleted={phaseCompleted}
+            currentPhase={currentPhase}
+            setShowReOnboard={setShowReOnboard}
             resumeAnalysis={resumeAnalysis}
             setResumeAnalysis={setResumeAnalysis}
           />
@@ -343,6 +347,18 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             setActiveSection("deep");
           }}
           onClose={() => setShowWizard(false)}
+        />
+      )}
+
+      {showReOnboard && (
+        <ReOnboardingWizard
+          profile={profile}
+          phase={currentPhase}
+          onComplete={(nextProfile) => {
+            setShowReOnboard(false);
+            onProfileUpdate(nextProfile);
+          }}
+          onClose={() => setShowReOnboard(false)}
         />
       )}
 
@@ -786,7 +802,7 @@ function ActiveSection({
   );
 }
 
-function Goals({ profile, roadmap, completedMilestones, onToggleMilestone }) {
+function Goals({ profile, roadmap, completedMilestones, onToggleMilestone, currentPhase, setShowReOnboard, phaseCompleted }) {
   const milestones = roadmap.goalsToAchieve?.milestones || [];
 
   const getFullMilestoneIndex = (milestoneId) => {
@@ -815,6 +831,30 @@ function Goals({ profile, roadmap, completedMilestones, onToggleMilestone }) {
             description={roadmap.goalsToAchieve?.description || "Follow your personalized roadmap step-by-step to reach your objective."} 
           />
         </div>
+
+        {phaseCompleted && currentPhase < 4 && (
+          <div className="mt-5 rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-6 text-emerald-950 shadow-sm border-l-4 border-l-emerald-500 animate-fade-in print:hidden">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex items-center justify-center md:justify-start gap-2 text-emerald-700 font-extrabold text-sm uppercase tracking-wider mb-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white font-extrabold text-xs font-mono">✓</span>
+                  <span>Phase {currentPhase} Completed!</span>
+                </div>
+                <h3 className="text-xl font-black text-slate-900 leading-tight">Ready for your next career jump?</h3>
+                <p className="mt-2 text-sm text-slate-600 max-w-xl">
+                  Congratulations on checking off all milestones of Phase {currentPhase}! Let's assess your progress and unlock the next chronological phase of your career journey.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReOnboard(true)}
+                className="px-6 py-3 rounded-lg text-sm font-extrabold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
+              >
+                Start Phase {currentPhase + 1} Onboarding
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 grid gap-4">
           {milestones.length > 0 ? (

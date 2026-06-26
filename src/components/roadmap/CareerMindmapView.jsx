@@ -101,6 +101,19 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
 
   const progressPct = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  const isNodeDisabled = useCallback((nodeId) => {
+    if (!nodeId) return false;
+    const mainMs = roadmap?.goalsToAchieve?.milestones || [];
+    const idx = mainMs.findIndex(m => m.id === nodeId);
+    if (idx <= 0) return false;
+    
+    // All preceding milestones in the full list must be completed
+    for (let i = 0; i < idx; i++) {
+      if (!completedMilestones.has(mainMs[i].id)) return true;
+    }
+    return false;
+  }, [roadmap, completedMilestones]);
+
   return (
     <div
       style={{
@@ -373,6 +386,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
             onToggleComplete={handleToggleComplete}
             completedMilestones={completedMilestones}
             profile={profile}
+            disabled={isNodeDisabled(activeNode?.id)}
           />
         </div>
       </div>

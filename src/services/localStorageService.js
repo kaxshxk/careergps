@@ -7,6 +7,8 @@ const STORAGE_KEYS = {
   resumeAnalysis: "career-gps:resume-analysis",
   marketIntel: "career-gps:market-intel",
   chatHistory: "career-gps:chat-history",
+  mindmapExpanded: "career-gps:mindmap-expanded",
+  mindmapZoom: "career-gps:mindmap-zoom",
 };
 
 export function saveStudentProfile(profile) {
@@ -80,6 +82,37 @@ export function loadChatHistory() {
   return raw ? JSON.parse(raw) : [];
 }
 
+export function saveMindmapExpandedNodes(nodeIds) {
+  try {
+    sessionStorage.setItem(STORAGE_KEYS.mindmapExpanded, JSON.stringify([...nodeIds]));
+  } catch (e) { /* sessionStorage might not be available */ }
+}
+
+export function loadMindmapExpandedNodes() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEYS.mindmapExpanded);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+export function saveMindmapZoom(transform) {
+  try {
+    sessionStorage.setItem(STORAGE_KEYS.mindmapZoom, JSON.stringify(transform));
+  } catch (e) { /* sessionStorage might not be available */ }
+}
+
+export function loadMindmapZoom() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEYS.mindmapZoom);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
 export function clearCareerGpsStorage() {
-  Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+  Object.values(STORAGE_KEYS).forEach((key) => {
+    localStorage.removeItem(key);
+    try {
+      sessionStorage.removeItem(key);
+    } catch (e) {}
+  });
 }

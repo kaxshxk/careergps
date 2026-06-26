@@ -266,6 +266,10 @@ function getMilestoneStage(timeframe, title = "", detail = "") {
   if (tf.includes("college year 3") || tf.includes("college 3rd year") || tf.includes("3rd year of college")) return "college-3";
   if (tf.includes("college year 4") || tf.includes("college 4th year") || tf.includes("4th year of college")) return "college-4";
 
+  // PG-specific timeframes — must be checked before generic "year N" patterns
+  if (tf.includes("pg year 1")) return "college-1";
+  if (tf.includes("pg year 2")) return "college-2";
+
   // Generic "year N" fallbacks (only after explicit college and diploma checks)
   if (tf.includes("year 1")) return "college-1";
   if (tf.includes("year 2")) return "college-2";
@@ -1055,12 +1059,75 @@ function getPgDegreeOptions(fieldType) {
   return map[fieldType] || [{ id: "degree-pg-master", label: "Master's Degree Program" }];
 }
 
+function buildPgSpecificMilestones(degreeId, fieldType) {
+  const pgMilestones = {
+    TECH: [
+      { id: `${degreeId}-pg-ms-1`, title: "Advanced Coursework & Research Methodology", timeframe: "PG Year 1", detail: "Master advanced algorithms, distributed systems, or AI/ML. Learn research methodology and complete literature reviews." },
+      { id: `${degreeId}-pg-ms-2`, title: "Thesis Research & Publication", timeframe: "PG Year 1", detail: "Begin thesis research under faculty guidance. Aim to publish at least one conference/journal paper." },
+      { id: `${degreeId}-pg-ms-3`, title: "Thesis Defense & Industry Placement", timeframe: "PG Year 2", detail: "Complete and defend your master's thesis. Secure a role via campus placements or research positions." },
+      { id: `${degreeId}-pg-ms-4`, title: "Teaching Assistantship / Lab Work", timeframe: "PG Year 2", detail: "Gain teaching experience as a TA or contribute to ongoing lab projects for deeper practical exposure." },
+    ],
+    SCIENCE: [
+      { id: `${degreeId}-pg-ms-1`, title: "Advanced Lab Techniques & Coursework", timeframe: "PG Year 1", detail: "Master advanced laboratory protocols, computational tools, and theoretical foundations in your specialization." },
+      { id: `${degreeId}-pg-ms-2`, title: "Research Project Initiation", timeframe: "PG Year 1", detail: "Identify research gaps, design experiments, and begin collecting data for your dissertation." },
+      { id: `${degreeId}-pg-ms-3`, title: "Dissertation & Academic Publication", timeframe: "PG Year 2", detail: "Complete your dissertation research, write and submit papers to peer-reviewed journals." },
+    ],
+    COMMERCE: [
+      { id: `${degreeId}-pg-ms-1`, title: "Core MBA Modules & Case Studies", timeframe: "PG Year 1", detail: "Master core management subjects: Strategy, Finance, Marketing, Operations. Engage in live case competitions." },
+      { id: `${degreeId}-pg-ms-2`, title: "Summer Internship & Specialization", timeframe: "PG Year 1", detail: "Complete a high-impact summer internship. Choose your specialization track (Finance, Marketing, HR, etc.)." },
+      { id: `${degreeId}-pg-ms-3`, title: "Final Placements & Capstone Project", timeframe: "PG Year 2", detail: "Prepare for and crack final placements. Complete a capstone consulting project with an industry partner." },
+    ],
+    LAW: [
+      { id: `${degreeId}-pg-ms-1`, title: "Advanced Legal Specialization", timeframe: "PG Year 1", detail: "Deep dive into your chosen specialization: IP Law, Corporate Law, Human Rights, or Constitutional Law." },
+      { id: `${degreeId}-pg-ms-2`, title: "Legal Research & Publication", timeframe: "PG Year 1", detail: "Publish research papers in legal journals and participate in national moot court competitions." },
+      { id: `${degreeId}-pg-ms-3`, title: "Dissertation Defense & Bar Prep", timeframe: "PG Year 2", detail: "Complete your LLM dissertation and prepare for specialized bar examinations or judicial service exams." },
+    ],
+    MEDICINE: [
+      { id: `${degreeId}-pg-ms-1`, title: "Clinical Rotations & Specialization", timeframe: "PG Year 1", detail: "Complete rotations in your chosen specialization. Master advanced diagnostic and surgical techniques." },
+      { id: `${degreeId}-pg-ms-2`, title: "Research & Case Presentations", timeframe: "PG Year 1", detail: "Present clinical cases at grand rounds. Begin a research project in your specialty area." },
+      { id: `${degreeId}-pg-ms-3`, title: "Board Certification & Fellowship", timeframe: "PG Year 2", detail: "Prepare for specialty board examinations. Apply for fellowship programs or senior residency positions." },
+    ],
+    ARTS: [
+      { id: `${degreeId}-pg-ms-1`, title: "Advanced Creative Practice & Theory", timeframe: "PG Year 1", detail: "Master advanced creative methodologies, critical theory, and industry-standard production techniques." },
+      { id: `${degreeId}-pg-ms-2`, title: "Portfolio Exhibition & Industry Network", timeframe: "PG Year 1", detail: "Build a professional portfolio. Exhibit work and establish connections with industry professionals." },
+      { id: `${degreeId}-pg-ms-3`, title: "Thesis Project & Career Launch", timeframe: "PG Year 2", detail: "Complete your master's thesis project. Secure a position in your creative field or launch independent practice." },
+    ]
+  };
+
+  const milestones = pgMilestones[fieldType] || pgMilestones.TECH;
+  return milestones.map(ms =>
+    node(
+      ms.id,
+      ms.title.length > 36 ? ms.title.slice(0, 34) + "…" : ms.title,
+      "milestone",
+      ms.timeframe,
+      ms.detail,
+      {
+        fullTitle: ms.title,
+        prerequisites: [],
+        sequenceIndex: 0,
+        isUserPath: true
+      }
+    )
+  );
+}
+
 function buildUserPgBranch(degreeId, degreeLabel, profile, roadmap, completedMilestoneIds) {
   const financialTier = profile.financialTier || "MEDIUM";
-  const goalType = profile.goal?.type || "JOB_ROLE";
   const careerGoal = profile.goal?.description || "Your Career Goal";
 
-  const milestoneChain = buildMilestoneChain(roadmap);
+  // Determine field type for PG-specific milestones
+  let fieldType = profile.field?.type || "TECH";
+  const lowId = degreeId.toLowerCase();
+  if (lowId.includes("msc") || lowId.includes("biotech")) fieldType = "SCIENCE";
+  else if (lowId.includes("mba") || lowId.includes("mcom")) fieldType = "COMMERCE";
+  else if (lowId.includes("llm")) fieldType = "LAW";
+  else if (lowId.includes("md")) fieldType = "MEDICINE";
+  else if (lowId.includes("ma") || lowId.includes("masscomm")) fieldType = "ARTS";
+
+  // Use PG-specific milestones instead of reusing UG milestone chain
+  const pgMilestones = buildPgSpecificMilestones(degreeId, fieldType);
+
   const certNodes = buildCertNodes(roadmap, financialTier);
   const internNodes = buildInternNodes(roadmap, financialTier);
   const altNodes = buildAlternateNodes(roadmap);
@@ -1069,6 +1136,8 @@ function buildUserPgBranch(degreeId, degreeLabel, profile, roadmap, completedMil
     children: altNodes
   });
 
+  // Career progression milestones (post-PG) — these are unique and safe to reuse
+  const milestoneChain = buildMilestoneChain(roadmap);
   const postCollegeMilestones = milestoneChain.filter(ms => getMilestoneStage(ms.timeframe, ms.fullTitle || ms.label, ms.detail) === "career-progression");
   let lastNodeInChain = altRoot;
   if (postCollegeMilestones.length > 0) {
@@ -1094,11 +1163,6 @@ function buildUserPgBranch(degreeId, degreeLabel, profile, roadmap, completedMil
     }
   );
 
-  const collegeMilestones = milestoneChain.filter(ms => {
-    const stage = getMilestoneStage(ms.timeframe, ms.fullTitle || ms.label, ms.detail);
-    return stage !== "career-progression";
-  });
-
   let skillBridgeNode = null;
   const skillGap = roadmap.skillGap;
   if (skillGap) {
@@ -1122,7 +1186,7 @@ function buildUserPgBranch(degreeId, degreeLabel, profile, roadmap, completedMil
     1, // startYear
     certNodes,
     internNodes,
-    collegeMilestones,
+    pgMilestones, // PG-specific milestones instead of UG milestones
     skillBridgeNode,
     careerGoalNode,
     true

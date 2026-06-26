@@ -18,7 +18,17 @@ function cleanGeminiJsonResponse(text) {
 
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../.env') });
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are supported for resume analysis."), false);
+    }
+  }
+});
 
 const app = express();
 app.use(express.json());
@@ -992,7 +1002,20 @@ app.post("/api/suggest-skills", async (req, res) => {
   }
 });
 
-app.post("/api/analyze-resume", upload.single("resume"), async (req, res) => {
+app.post("/api/analyze-resume", (req, res, next) => {
+  upload.single("resume")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: "File size limit exceeded. Max size allowed is 10MB." });
+        }
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const file = req.file;
     const profile = JSON.parse(req.body.profile || "{}");

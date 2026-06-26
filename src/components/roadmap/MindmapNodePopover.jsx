@@ -30,7 +30,7 @@ const TIER_BADGES = {
 
 const COMPLETABLE_TYPES = new Set(["milestone", "goal", "cert", "internship"]);
 
-export default function MindmapNodePopover({ node, onClose, onToggleComplete, completedMilestones, profile }) {
+export default function MindmapNodePopover({ node, onClose, onToggleComplete, completedMilestones, profile, disabled }) {
   const panelRef = useRef(null);
   
   useEffect(() => {
@@ -426,14 +426,29 @@ export default function MindmapNodePopover({ node, onClose, onToggleComplete, co
           <div className="px-6 py-4">
             <button
               id={`mindmap-complete-${node.id}`}
-              onClick={() => onToggleComplete(node.id)}
-              className="w-full flex items-center justify-center gap-3 rounded-xl py-3 px-4 font-semibold text-sm transition-all duration-200 active:scale-[0.98]"
-              style={isCompleted
+              disabled={disabled}
+              onClick={() => { if (!disabled) onToggleComplete(node.id); }}
+              className={`w-full flex items-center justify-center gap-3 rounded-xl py-3 px-4 font-semibold text-sm transition-all duration-200 ${
+                disabled 
+                  ? "opacity-50 cursor-not-allowed" 
+                  : "active:scale-[0.98]"
+              }`}
+              style={disabled
+                ? { background: "#f1f5f9", color: "#94a3b8", border: "1px solid #e2e8f0" }
+                : isCompleted
                 ? { background: "#dcfce7", color: "#15803d", border: "1px solid #10b981" }
                 : { background: `${color}12`, color, border: `1px solid ${color}35` }
               }
             >
-              {isCompleted ? (
+              {disabled ? (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+                    <rect x={3} y={11} width={18} height={11} rx={2} ry={2} />
+                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                  </svg>
+                  Milestone Locked
+                </>
+              ) : isCompleted ? (
                 <>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
                     <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -451,7 +466,10 @@ export default function MindmapNodePopover({ node, onClose, onToggleComplete, co
               )}
             </button>
             <p className="mt-2 text-center text-[10px] text-slate-400">
-              Completion syncs with your Goals dashboard
+              {disabled 
+                ? "Complete all preceding milestones to unlock this goal" 
+                : "Completion syncs with your Goals dashboard"
+              }
             </p>
           </div>
         </>

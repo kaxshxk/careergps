@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import * as d3 from "d3";
+import { saveMindmapExpandedNodes, loadMindmapExpandedNodes, saveMindmapZoom, loadMindmapZoom } from "../../services/localStorageService";
 import { NODE_COLORS } from "../../data/mindmapTreeBuilder";
 
 // ─────────────────────────────────────────────────────────
@@ -174,10 +175,16 @@ export default function CareerMindmap({ treeData, completedMilestones, onNodeCli
   const [dimensions, setDimensions] = useState({ w: 1200, h: 800 });
 
   // Track expanded node IDs
-  const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set(["mindmap-root"]));
+  const [expandedNodeIds, setExpandedNodeIds] = useState(() => {
+    const saved = loadMindmapExpandedNodes();
+    return saved ? new Set(saved) : new Set(["mindmap-root"]);
+  });
 
   // Update expandedNodeIds when treeData is loaded or changed to automatically expand where the user is
   const lastTreeDataRef = useRef(null);
+  const zoomTransformRef = useRef(null);
+  const zoomRef = useRef(null);
+  const isFirstRenderRef = useRef(true);
   useEffect(() => {
     if (treeData && treeData !== lastTreeDataRef.current) {
       lastTreeDataRef.current = treeData;
@@ -190,6 +197,11 @@ export default function CareerMindmap({ treeData, completedMilestones, onNodeCli
       });
     }
   }, [treeData, profile]);
+
+  // Persist expandedNodeIds to sessionStorage for cross-navigation survival
+  useEffect(() => {
+    saveMindmapExpandedNodes(expandedNodeIds);
+  }, [expandedNodeIds]);
 
 
   // Track container size
@@ -301,9 +313,15 @@ export default function CareerMindmap({ treeData, completedMilestones, onNodeCli
 
     // SVG setup
     const svg = d3.select(svgRef.current);
+    // Capture current zoom transform before clearing
+    if (svgRef.current && !isFirstRenderRef.current) {
+      try {
+        zoomTransformRef.current = d3.zoomTransform(svgRef.current);
+      } catch (e) { /* no transform yet */ }
+    }
     svg.selectAll("*").remove();
     svg.attr("width", "100%").attr("height", "100%")
-       .attr("viewBox", `0 0 ${Math.max(treeWidth, w)} ${Math.max(treeHeight, h)}`);
+       .attr("viewBox", `0 0 ${w} ${h}`);
 
     // ── Defs: filters, gradients, dot pattern ──
     const defs = svg.append("defs");
@@ -361,10 +379,31 @@ export default function CareerMindmap({ treeData, completedMilestones, onNodeCli
       .scaleExtent([0.3, 2.5])
       .on("zoom", (event) => {
         g.attr("transform", event.transform);
+        // Save zoom state for cross-navigation persistence
+        zoomTransformRef.current = event.transform;
+        saveMindmapZoom({ k: event.transform.k, x: event.transform.x, y: event.transform.y });
       });
     svg.call(zoom);
-    // Set initial transform to show the root near the left
-    svg.call(zoom.transform, d3.zoomIdentity.translate(80 - minX, h / 2 - (minY + maxY) / 2));
+    zoomRef.current = zoom;
+
+    // Restore saved zoom transform, or use initial position on first render
+    if (zoomTransformRef.current && !isFirstRenderRef.current) {
+      svg.call(zoom.transform, zoomTransformRef.current);
+    } else {
+      // Check sessionStorage for cross-navigation persistence
+      const savedZoom = loadMindmapZoom();
+      if (savedZoom) {
+        const restored = d3.zoomIdentity.translate(savedZoom.x, savedZoom.y).scale(savedZoom.k);
+        svg.call(zoom.transform, restored);
+        zoomTransformRef.current = restored;
+      } else {
+        // First render: center on root
+        const initialTransform = d3.zoomIdentity.translate(80 - minX, h / 2 - (minY + maxY) / 2);
+        svg.call(zoom.transform, initialTransform);
+        zoomTransformRef.current = initialTransform;
+      }
+    }
+    isFirstRenderRef.current = false;
 
     // ── Links (curved Bezier) ──
     g.selectAll(".link")
