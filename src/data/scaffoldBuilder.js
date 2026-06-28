@@ -458,12 +458,13 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
 // ─────────────────────────────────────────────────────────
 // Apply persisted states (locked/unlocked/completed) to scaffold
 // ─────────────────────────────────────────────────────────
-function applyNodeStates(node, stateMap) {
-  if (stateMap[node.id]) {
-    node.state = stateMap[node.id];
+function applyNodeStates(node, stateMap = {}) {
+  const currentMap = stateMap || {};
+  if (currentMap[node.id]) {
+    node.state = currentMap[node.id];
   }
   for (const child of node.children) {
-    applyNodeStates(child, stateMap);
+    applyNodeStates(child, currentMap);
   }
 }
 
@@ -499,16 +500,19 @@ export function findNodeById(root, targetId) {
  * relative to all unlocked nodes' goals.
  * Returns: { percent: number, completedCount: number, totalCount: number }
  */
-export function calculateProgress(root, nodeCache, nodeStates, completedGoalsSet = new Set()) {
+export function calculateProgress(root, nodeCache = {}, nodeStates = {}, completedGoalsSet = new Set()) {
   let totalGoals = 0;
   let completedGoals = 0;
 
+  const currentCache = nodeCache || {};
+  const currentStates = nodeStates || {};
+
   function walk(node) {
-    const state = nodeStates[node.id] || node.state;
+    const state = currentStates[node.id] || node.state;
     // Only count unlocked, in_progress, or completed nodes
     if (state === "locked") return;
 
-    const content = nodeCache[node.id];
+    const content = currentCache[node.id];
     if (content && content.goals) {
       totalGoals += content.goals.length;
       if (state === "completed") {
