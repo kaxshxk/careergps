@@ -168,3 +168,77 @@ export function parseDeepQuestions(data) {
 export function parseDeepRoadmap(data) {
   return deepRoadmapDetailsSchema.parse(data);
 }
+
+// ─────────────────────────────────────────────────────────
+// Node Content Schema — for lazy per-node API responses
+// ─────────────────────────────────────────────────────────
+
+export const nodeMilestoneSchema = z.object({
+  id: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  detail: z.string().trim().min(1),
+  timeframe: z.string().trim().min(1),
+});
+
+export const nodeContentSchema = z.object({
+  goals: z.array(z.string().trim().min(1)).min(1),
+  skills: z.array(z.string().trim().min(1)),
+  milestones: z.array(nodeMilestoneSchema),
+  summary: z.string().trim().min(1),
+  goal_reasons: z.record(z.string(), z.string()),
+  stageGoals: z.array(z.string().trim().min(1)).optional().default([]),
+  // Optional additions for specific node expansions:
+  collegeCourses: z.array(collegeCourseSchema).optional(),
+  internships: z.array(internshipSchema).optional(),
+  certifications: z.array(certificationSchema).optional(),
+  alternatePaths: z.array(alternatePathSchema).optional(),
+  options: z.array(z.string().trim().min(1)).optional(),
+  recommended_option: z.string().trim().optional(),
+  isMock: z.boolean().optional(),
+});
+
+// ─────────────────────────────────────────────────────────
+// Checkpoint Schema — for checkpoint panel API responses
+// ─────────────────────────────────────────────────────────
+
+export const checkpointContentSchema = z.object({
+  narrative: z.string().trim().min(1),
+  skills_earned: z.array(z.string().trim().min(1)),
+  certifications: z.array(z.string().trim().min(1)),
+  internships: z.array(z.string().trim().min(1)),
+  mini_resume: z.string().trim().min(1),
+  isMock: z.boolean().optional(),
+});
+
+// ─────────────────────────────────────────────────────────
+// Scaffold Node Schema — for mindmap scaffold structure
+// ─────────────────────────────────────────────────────────
+
+export const NODE_TYPES = [
+  "root", "stage", "semester", "selection", "checkpoint",
+  "cert", "internship", "goal", "alternate", "skill", "quarterly"
+];
+
+export const scaffoldNodeSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  type: z.enum(["root", "stage", "semester", "selection", "checkpoint",
+    "cert", "internship", "goal", "alternate", "skill", "quarterly"]),
+  state: z.enum(["locked", "unlocked", "in_progress", "completed"]).default("locked"),
+  depth: z.number().int().min(0),
+  parentId: z.string().nullable().default(null),
+  isSelectionPoint: z.boolean().default(false),  // user must choose one of multiple options
+  isCheckpoint: z.boolean().default(false),
+  isCurrentStage: z.boolean().default(false),     // the user's "NOW" starting node
+  isFinalGoal: z.boolean().default(false),        // terminal career goal node
+  color: z.string().optional(),
+  children: z.array(z.lazy(() => scaffoldNodeSchema)).default([]),
+});
+
+export function parseNodeContent(data) {
+  return nodeContentSchema.parse(data);
+}
+
+export function parseCheckpointContent(data) {
+  return checkpointContentSchema.parse(data);
+}

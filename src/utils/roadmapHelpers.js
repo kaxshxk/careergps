@@ -4,7 +4,8 @@ export function filterByFinancialTier(items, financialTier) {
 
 export function getAllMilestones(roadmap) {
   const goalsToAchieve = roadmap.goalsToAchieve?.milestones || [];
-  const certifications = roadmap.certifications.map((certification) => ({
+  // Bug #16 fix: guard against certifications being undefined/null
+  const certifications = (roadmap.certifications ?? []).map((certification) => ({
     id: certification.id,
     title: certification.name,
     detail: certification.impact,

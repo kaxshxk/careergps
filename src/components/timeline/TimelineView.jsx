@@ -10,7 +10,7 @@ import {
 } from "../../services/localStorageService";
 import TimelineNode from "./TimelineNode";
 import TimelineDetailPanel from "./TimelineDetailPanel";
-import ReOnboardingWizard from "../roadmap/ReOnboardingWizard";
+
 
 /**
  * Full-screen RPG-style vertical timeline view.
@@ -43,7 +43,6 @@ export default function TimelineView({
   const hoverTimeoutRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const [youAreHereStage, setYouAreHereStage] = useState("");
-  const [showReOnboard, setShowReOnboard] = useState(false);
 
   // Build timeline data
   const timeline = useMemo(
@@ -269,7 +268,6 @@ export default function TimelineView({
               onToggleMilestone={toggleMilestone}
               onToggleSubTask={toggleMilestone}
               onClose={handleClosePanel}
-              onTriggerReOnboard={() => setShowReOnboard(true)}
               currentPhase={currentPhase}
               phaseCompleted={phaseCompleted}
               profile={profile}
@@ -277,18 +275,6 @@ export default function TimelineView({
           </div>
         </div>
       </div>
-
-      {showReOnboard && (
-        <ReOnboardingWizard
-          profile={profile}
-          phase={currentPhase}
-          onComplete={(nextProfile) => {
-            setShowReOnboard(false);
-            onProfileUpdate(nextProfile);
-          }}
-          onClose={() => setShowReOnboard(false)}
-        />
-      )}
     </GradientBackground>
   );
 }

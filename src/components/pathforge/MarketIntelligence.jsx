@@ -14,16 +14,10 @@ export default function MarketIntelligence({ profile }) {
   const jobTitle = profile.goal?.description || "";
   const studyField = profile.field?.type || "General";
 
-  useEffect(() => {
-    const cached = loadMarketIntel();
-    if (cached) {
-      setIntel(cached);
-    } else {
-      // Auto-trigger load on mount if there's a goal
-      triggerFetch();
-    }
-  }, [jobTitle]);
-
+  // Bug #18 fix: define triggerFetch BEFORE the useEffect that calls it.
+  // Using const (function expression) means it is NOT hoisted — referencing it
+  // in a useEffect that appears earlier in source would cause a ReferenceError
+  // under some bundler/strict-mode configurations.
   const triggerFetch = async () => {
     if (!jobTitle) {
       setError("Please ensure you have defined a career goal in onboarding first.");
@@ -43,6 +37,20 @@ export default function MarketIntelligence({ profile }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const cached = loadMarketIntel();
+    if (cached) {
+      setIntel(cached);
+    } else {
+      // Auto-trigger load on mount if there's a goal.
+      // Note: location is intentionally excluded from the dep array here —
+      // location changes are handled by the manual "Refresh Report" button.
+      triggerFetch();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobTitle]);
+
 
   const getDemandColor = (level) => {
     switch (level?.toUpperCase()) {

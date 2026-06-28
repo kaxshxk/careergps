@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import GeneratingScreen from "./components/GeneratingScreen";
 import OnboardingWizard from "./components/onboarding/OnboardingWizard";
 import RoadmapDashboard from "./components/roadmap/RoadmapDashboard";
-import DecisionTreeView from "./components/roadmap/DecisionTreeView";
 import CareerMindmapView from "./components/roadmap/CareerMindmapView";
 import TimelineView from "./components/timeline/TimelineView";
 import WelcomePage from "./components/WelcomePage";
@@ -13,7 +12,9 @@ import {
   loadStudentProfile,
   saveRoadmap,
   saveStudentProfile,
+  clearCareerGpsStorage,
 } from "./services/localStorageService";
+
 import { parseRoadmap, parseStudentProfile } from "./schemas/roadmapSchemas";
 import { processRoadmapForHistory } from "./utils/roadmapHelpers";
 
@@ -23,7 +24,6 @@ const VIEWS = {
   generating: "GENERATING",
   timeline: "TIMELINE",
   roadmap: "ROADMAP",
-  decisionTree: "DECISION_TREE",
   mindmap: "MINDMAP",
 };
 
@@ -55,7 +55,7 @@ export default function App() {
     setView(VIEWS.generating);
 
     try {
-      const response = await fetch("/api/generate-roadmap", {
+      const response = await fetch("/api/init-roadmap", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -98,9 +98,13 @@ export default function App() {
     }
   }
 
+  // Bug #10 fix: clear localStorage so stale profile/roadmap are not
+  // restored on next page load, making the reset button appear broken.
   function handleReset() {
+    clearCareerGpsStorage();
     setProfile(null);
     setRoadmap(null);
+    setSavedFinancialTier(null);
     setView(VIEWS.welcome);
   }
 
@@ -128,7 +132,6 @@ export default function App() {
         initialFinancialTier={savedFinancialTier}
         onReset={handleReset}
         onViewTimeline={() => setView(VIEWS.timeline)}
-        onViewDecisionTree={() => setView(VIEWS.decisionTree)}
         onViewMindmap={() => setView(VIEWS.mindmap)}
         onProfileUpdate={handleProfileComplete}
       />
@@ -138,16 +141,6 @@ export default function App() {
   if (view === VIEWS.mindmap && profile && roadmap) {
     return (
       <CareerMindmapView
-        profile={profile}
-        roadmap={roadmap}
-        onGoToDashboard={() => setView(VIEWS.roadmap)}
-      />
-    );
-  }
-
-  if (view === VIEWS.decisionTree && profile && roadmap) {
-    return (
-      <DecisionTreeView
         profile={profile}
         roadmap={roadmap}
         onGoToDashboard={() => setView(VIEWS.roadmap)}

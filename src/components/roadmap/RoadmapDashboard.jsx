@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { GradientBackground } from "@/components/ui/gradient-background";
 import {
   clearCareerGpsStorage,
@@ -8,7 +8,17 @@ import {
   loadDeepRoadmap,
   saveDeepRoadmap,
   loadResumeAnalysis,
+  loadCompletedDeepWeeks,
+  saveCompletedDeepWeeks,
+  // New local storage cache and states
+  loadNodeCache,
+  saveNodeCache,
+  loadNodeStates,
+  saveNodeStates,
+  loadCompletedGoalsList,
+  saveCompletedGoalsList
 } from "../../services/localStorageService";
+
 import {
   filterByFinancialTier,
   getAllMilestones,
@@ -16,8 +26,8 @@ import {
   getProgressStats,
   getStageLabel,
 } from "../../utils/roadmapHelpers";
+import { buildMindmapScaffold, flattenScaffold, calculateProgress } from "../../data/scaffoldBuilder";
 import DeepOptimizationWizard from "./DeepOptimizationWizard";
-import ReOnboardingWizard from "./ReOnboardingWizard";
 import ResumeAnalyzer from "../pathforge/ResumeAnalyzer";
 import MarketIntelligence from "../pathforge/MarketIntelligence";
 import CareerChat from "../pathforge/CareerChat";
@@ -48,7 +58,7 @@ const tierAccent = {
   LOW: "bg-emerald-600 text-white",
 };
 
-export default function RoadmapDashboard({ profile, roadmap, initialFinancialTier, onReset, onViewTimeline, onViewDecisionTree, onViewMindmap, onProfileUpdate }) {
+export default function RoadmapDashboard({ profile, roadmap, initialFinancialTier, onReset, onViewTimeline, onViewMindmap, onProfileUpdate }) {
   const [activeSection, setActiveSection] = useState("goals");
   const [financialTier, setFinancialTier] = useState(initialFinancialTier || profile.financialTier);
   const [selectedAlternate, setSelectedAlternate] = useState(null);
@@ -56,11 +66,90 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   const [deepRoadmap, setDeepRoadmap] = useState(() => loadDeepRoadmap());
   const [resumeAnalysis, setResumeAnalysis] = useState(() => loadResumeAnalysis());
   const [showWizard, setShowWizard] = useState(false);
-  const [showReOnboard, setShowReOnboard] = useState(false);
-  const [completedDeepWeeks, setCompletedDeepWeeks] = useState(() => {
-    const raw = localStorage.getItem("career-gps:completed-deep-weeks");
-    return raw ? JSON.parse(raw) : [];
+  const [completedDeepWeeks, setCompletedDeepWeeks] = useState(() => loadCompletedDeepWeeks());
+
+  // Mindmap stage-locked lazy state loaded from storage
+  const [completedGoals, setCompletedGoals] = useState(() => new Set(loadCompletedGoalsList()));
+  const [nodeCache, setNodeCache] = useState(() => loadNodeCache());
+  const [nodeStates, setNodeStates] = useState(() => loadNodeStates());
+  const [userSelections, setUserSelections] = useState(() => {
+    try {
+      const raw = localStorage.getItem("career-gps:user-selections");
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
   });
+
+  // Reevaluate node states
+  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache) => {
+    const root = buildMindmapScaffold(profile, {});
+    const flat = flattenScaffold(root);
+    const nextStates = {};
+
+    nextStates["node-root"] = "completed";
+
+    const startNode = flat.find(n => n.isCurrentStage);
+    if (startNode) {
+      nextStates[startNode.id] = "unlocked";
+    }
+
+    function walk(node) {
+      const state = nextStates[node.id] || "locked";
+      const content = currentCache[node.id];
+      const goalsList = content?.goals || [];
+      const completedList = goalsList.filter(g => currentGoals.has(g));
+      const percentComplete = goalsList.length ? (completedList.length / goalsList.length) : 0;
+      
+      const isParentCompleted = state === "completed" || percentComplete >= 1.0;
+      const isParent80Percent = percentComplete >= 0.8;
+
+      for (const child of node.children) {
+        if (child.isSelectionPoint) {
+          const selection = currentSelections[child.id];
+          if (selection) {
+            nextStates[child.id] = "completed";
+          } else {
+            nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
+          }
+        } else if (child.isCheckpoint) {
+          nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "completed" : "locked";
+        } else {
+          const nextState = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
+          const oldState = nodeStates[child.id] || "locked";
+          if (oldState === "completed" && nextState !== "locked") {
+            nextStates[child.id] = "completed";
+          } else if (oldState === "in_progress" && nextState !== "locked") {
+            nextStates[child.id] = "in_progress";
+          } else {
+            nextStates[child.id] = nextState;
+          }
+        }
+        walk(child);
+      }
+    }
+
+    walk(root);
+    return nextStates;
+  }, [profile, nodeStates]);
+
+  const handleToggleGoal = useCallback((goalText) => {
+    setCompletedGoals(prev => {
+      const next = new Set(prev);
+      if (next.has(goalText)) {
+        next.delete(goalText);
+      } else {
+        next.add(goalText);
+      }
+      
+      const list = Array.from(next);
+      saveCompletedGoalsList(list);
+
+      // Propagate locks / unlocks downwards
+      const updatedStates = reevaluateStates(next, userSelections, nodeCache);
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+      return next;
+    });
+  }, [nodeCache, nodeStates, userSelections, reevaluateStates]);
 
   const currentPhase = profile.onboardingPhase || 1;
   const phaseCompleted = useMemo(() => {
@@ -87,19 +176,28 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   }, [profile.stage]);
 
   const milestoneCount = getAllMilestones(roadmap).length;
+  
+  // Calculate progress statistics relative to the unlocked mindmap path
   const progressStats = useMemo(() => {
-    const baseStats = getProgressStats(roadmap, completedMilestones);
+    const root = buildMindmapScaffold(profile, nodeStates);
+    const mmStats = calculateProgress(root, nodeCache, nodeStates, completedGoals);
+    
+    // Add deep assessment progression if active
     if (!deepRoadmap || !deepRoadmap.weeklyStudyPlan || !deepRoadmap.weeklyStudyPlan.length) {
-      return baseStats;
+      return {
+        total: mmStats.totalCount || 1,
+        completed: mmStats.completedCount,
+        percentage: mmStats.percent,
+        byPhase: []
+      };
     }
 
     const deepWeeks = deepRoadmap.weeklyStudyPlan;
     const deepTotal = deepWeeks.length;
     const deepCompleted = deepWeeks.filter((w) => completedDeepWeeks.includes(w.week)).length;
-    const deepPercentage = deepTotal ? Math.round((deepCompleted / deepTotal) * 100) : 0;
 
-    const total = baseStats.total + deepTotal;
-    const completed = baseStats.completed + deepCompleted;
+    const total = (mmStats.totalCount || 0) + deepTotal;
+    const completed = mmStats.completedCount + deepCompleted;
     const percentage = total ? Math.round((completed / total) * 100) : 0;
 
     const byPhase = [
@@ -154,10 +252,11 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       const next = current.includes(weekId)
         ? current.filter((id) => id !== weekId)
         : [...current, weekId];
-      localStorage.setItem("career-gps:completed-deep-weeks", JSON.stringify(next));
+      saveCompletedDeepWeeks(next);
       return next;
     });
   };
+
 
   function updateTier(nextTier) {
     setFinancialTier(nextTier);
@@ -165,10 +264,11 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   }
 
   function handleReset() {
+    // clearCareerGpsStorage() now covers career-gps:completed-deep-weeks too
     clearCareerGpsStorage();
-    localStorage.removeItem("career-gps:completed-deep-weeks");
     onReset();
   }
+
 
   return (
     <GradientBackground
@@ -188,7 +288,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
               Goal direction: {formatGoalType(profile.goal.type)} - {profile.goal.description}
             </p>
           </div>
-          <div className="flex items-center gap-3 self-start">
+          <div className="flex flex-wrap items-center gap-3 self-start lg:self-center">
             <button
               className="focus-ring rounded-md bg-gradient-to-r from-[#28b7a5] to-emerald-600 px-4 py-2 text-sm font-semibold text-[#0b463b] hover:from-[#39cbba] hover:to-emerald-500 transition transform hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-emerald-200 print:hidden font-bold"
               type="button"
@@ -196,13 +296,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             >
               Journey Timeline
             </button>
-            <button
-              className="focus-ring rounded-md bg-gradient-to-r from-[#28b7a5] to-emerald-600 px-4 py-2 text-sm font-semibold text-[#0b463b] hover:from-[#39cbba] hover:to-emerald-500 transition transform hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-emerald-200 print:hidden font-bold"
-              type="button"
-              onClick={onViewDecisionTree}
-            >
-              Decision Tree
-            </button>
+
             <button
               className="focus-ring rounded-md bg-gradient-to-r from-violet-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white hover:from-violet-400 hover:to-purple-500 transition transform hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-purple-200 print:hidden font-bold"
               type="button"
@@ -327,9 +421,12 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             setCompletedDeepWeeks={setCompletedDeepWeeks}
             phaseCompleted={phaseCompleted}
             currentPhase={currentPhase}
-            setShowReOnboard={setShowReOnboard}
             resumeAnalysis={resumeAnalysis}
             setResumeAnalysis={setResumeAnalysis}
+            completedGoals={completedGoals}
+            onToggleGoal={handleToggleGoal}
+            nodeCache={nodeCache}
+            nodeStates={nodeStates}
           />
         </section>
 
@@ -350,17 +447,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
         />
       )}
 
-      {showReOnboard && (
-        <ReOnboardingWizard
-          profile={profile}
-          phase={currentPhase}
-          onComplete={(nextProfile) => {
-            setShowReOnboard(false);
-            onProfileUpdate(nextProfile);
-          }}
-          onClose={() => setShowReOnboard(false)}
-        />
-      )}
+
 
     </GradientBackground>
   );
@@ -468,11 +555,13 @@ function ActiveSection({
   setDeepRoadmap,
   saveDeepRoadmap,
   setCompletedDeepWeeks,
-  currentPhase,
-  setShowReOnboard,
   phaseCompleted,
   resumeAnalysis,
   setResumeAnalysis,
+  completedGoals,
+  onToggleGoal,
+  nodeCache,
+  nodeStates,
 }) {
   const [deepTab, setDeepTab] = useState("study");
 
@@ -526,7 +615,34 @@ function ActiveSection({
       />
     );
   }
-  if (activeSection === "skills") return <SkillMap skillGap={roadmap.skillGap} profile={profile} completedMilestones={completedMilestones} resumeAnalysis={resumeAnalysis} />;
+  if (activeSection === "skills") {
+    const need = [];
+    const rootScaffold = buildMindmapScaffold(profile, nodeStates);
+    const flatScaffold = flattenScaffold(rootScaffold);
+    
+    flatScaffold.forEach(node => {
+      const state = nodeStates[node.id] || node.state;
+      if (state !== "locked") {
+        const content = nodeCache[node.id];
+        if (content && content.skills) {
+          content.skills.forEach(skill => {
+            need.push({ skill, milestoneId: node.id });
+          });
+        }
+      }
+    });
+
+    const dynamicSkillGap = {
+      have: profile.skills || [],
+      need,
+      bridgingSteps: roadmap.skillGap?.bridgingSteps || [
+        "Follow the active mindmap milestone objectives.",
+        "Practice target technical skills daily."
+      ]
+    };
+
+    return <SkillMap skillGap={dynamicSkillGap} profile={profile} completedMilestones={completedMilestones} resumeAnalysis={resumeAnalysis} />;
+  }
   if (activeSection === "resume") return <ResumeAnalyzer profile={profile} onAnalysisComplete={setResumeAnalysis} />;
   if (activeSection === "market") return <MarketIntelligence profile={profile} />;
   if (activeSection === "chat") return <CareerChat profile={profile} />;
@@ -792,92 +908,143 @@ function ActiveSection({
   return (
     <Goals
       profile={profile}
-      roadmap={roadmap}
-      completedMilestones={completedMilestones}
-      onToggleMilestone={onToggleMilestone}
-      currentPhase={currentPhase}
-      setShowReOnboard={setShowReOnboard}
-      phaseCompleted={phaseCompleted}
+      completedGoals={completedGoals}
+      onToggleGoal={onToggleGoal}
+      nodeCache={nodeCache}
+      nodeStates={nodeStates}
     />
   );
 }
 
-function Goals({ profile, roadmap, completedMilestones, onToggleMilestone, currentPhase, setShowReOnboard, phaseCompleted }) {
-  const milestones = roadmap.goalsToAchieve?.milestones || [];
+function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates }) {
+  const [tooltip, setTooltip] = useState(null);
 
-  const getFullMilestoneIndex = (milestoneId) => {
-    return milestones.findIndex(ms => ms.id === milestoneId);
+  const scaffold = buildMindmapScaffold(profile, nodeStates);
+  const flatNodes = flattenScaffold(scaffold);
+
+  // Filter nodes that are unlocked/in progress/completed and have content goals loaded
+  const activeNodes = flatNodes.filter(n => {
+    const state = nodeStates[n.id] || n.state;
+    if (state === "locked") return false;
+    const content = nodeCache[n.id];
+    return content && content.goals && content.goals.length > 0;
+  });
+
+  const handleMouseEnter = (e, text) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      text,
+      x: rect.left + window.scrollX + 25,
+      y: rect.top + window.scrollY - 30
+    });
   };
 
-  const isMilestoneDisabled = (milestoneId) => {
-    const idx = getFullMilestoneIndex(milestoneId);
-    if (idx <= 0) return false;
-    
-    // All preceding milestones in the full list must be completed
-    for (let i = 0; i < idx; i++) {
-      if (!completedMilestones.has(milestones[i].id)) return true;
-    }
-    
-    return false;
+  const handleMouseLeave = () => {
+    setTooltip(null);
   };
 
   return (
-    <div className="grid gap-5 animate-fade-in">
-      <Panel className="border-l-4 border-l-ocean">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-100 pb-5">
-          <SectionHeader 
-            kicker="Current Pathway" 
-            title="Goals to Achieve" 
-            description={roadmap.goalsToAchieve?.description || "Follow your personalized roadmap step-by-step to reach your objective."} 
-          />
-        </div>
+    <div className="grid gap-6 animate-fade-in relative">
+      <Panel className="border-l-4 border-l-emerald-500">
+        <SectionHeader
+          kicker="Milestone Goals"
+          title="Goals to Achieve"
+          description="Complete individual stage objectives to unlock future nodes on your Career Mindmap."
+        />
 
-        {phaseCompleted && currentPhase < 4 && (
-          <div className="mt-5 rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-6 text-emerald-950 shadow-sm border-l-4 border-l-emerald-500 animate-fade-in print:hidden">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex-1 text-center md:text-left">
-                <div className="flex items-center justify-center md:justify-start gap-2 text-emerald-700 font-extrabold text-sm uppercase tracking-wider mb-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white font-extrabold text-xs font-mono">✓</span>
-                  <span>Phase {currentPhase} Completed!</span>
-                </div>
-                <h3 className="text-xl font-black text-slate-900 leading-tight">Ready for your next career jump?</h3>
-                <p className="mt-2 text-sm text-slate-600 max-w-xl">
-                  Congratulations on checking off all milestones of Phase {currentPhase}! Let's assess your progress and unlock the next chronological phase of your career journey.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowReOnboard(true)}
-                className="px-6 py-3 rounded-lg text-sm font-extrabold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
-              >
-                Start Phase {currentPhase + 1} Onboarding
-              </button>
-            </div>
-          </div>
-        )}
+        <div className="mt-6 space-y-6">
+          {activeNodes.length > 0 ? (
+            activeNodes.map((node) => {
+              const content = nodeCache[node.id];
+              const goals = content.goals || [];
+              const goalReasons = content.goal_reasons || {};
+              const nodeState = nodeStates[node.id] || node.state;
 
-        <div className="mt-6 grid gap-4">
-          {milestones.length > 0 ? (
-            milestones.map((milestone) => {
-              const fullIdx = getFullMilestoneIndex(milestone.id);
               return (
-                <div key={milestone.id} className="relative">
-                  <MilestoneCard
-                    milestone={milestone}
-                    index={fullIdx}
-                    disabled={isMilestoneDisabled(milestone.id)}
-                    checked={completedMilestones.has(milestone.id)}
-                    onToggle={onToggleMilestone}
-                    completedMilestones={completedMilestones}
-                  />
+                <div key={node.id} className="border border-slate-200/80 rounded-2xl p-5 bg-white shadow-sm flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ background: node.color }}
+                      />
+                      <span className="font-bold text-sm text-slate-800">{node.label}</span>
+                      <span className="text-[10px] text-slate-500 font-semibold px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">
+                        {node.timeframe}
+                      </span>
+                    </div>
+
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                      nodeState === "completed" 
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                        : "bg-blue-100 text-blue-800 border border-blue-200"
+                    }`}>
+                      {nodeState}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3">
+                    {goals.map((goal, idx) => {
+                      const isChecked = completedGoals.has(goal);
+                      const whyReason = goalReasons[goal] || "This helps build target career capabilities.";
+
+                      return (
+                        <div 
+                          key={idx}
+                          className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all duration-200 ${
+                            isChecked 
+                              ? "bg-emerald-50/20 border-emerald-250 text-slate-800" 
+                              : "bg-slate-50/50 border-slate-200 hover:border-slate-350 text-slate-700"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => onToggleGoal(goal)}
+                            className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                          />
+                          <div className="flex-1 text-sm leading-relaxed select-none">
+                            {goal}
+                          </div>
+                          
+                          <button
+                            onMouseEnter={(e) => handleMouseEnter(e, whyReason)}
+                            onMouseLeave={handleMouseLeave}
+                            className="text-slate-400 hover:text-amber-500 transition-colors p-0.5 flex-shrink-0"
+                            aria-label="Why this matters"
+                          >
+                            💡
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })
           ) : (
-            <p className="text-sm text-slate-500 py-8 text-center italic">No milestones found.</p>
+            <div className="text-center py-10">
+              <span className="text-3xl">🧭</span>
+              <p className="text-sm text-slate-500 mt-2 font-medium">No unlocked stages found with checklist goals.</p>
+              <p className="text-xs text-slate-400 mt-1">Visit the Career Mindmap first to load your starting path nodes.</p>
+            </div>
           )}
         </div>
       </Panel>
+
+      {/* Floating fixed portal tooltip */}
+      {tooltip && (
+        <div
+          className="fixed bg-slate-900 border border-slate-800 text-white rounded-xl shadow-2xl p-3.5 max-w-[280px] z-[9999] text-xs leading-normal animate-fadeIn flex gap-2.5 items-start"
+          style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
+        >
+          <span className="text-amber-400 mt-0.5">💡</span>
+          <div>
+            <p className="font-bold text-slate-400 mb-0.5">Why This Matters</p>
+            <p className="text-slate-200">{tooltip.text}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -43,7 +43,11 @@ How can I help guide your professional growth today? Ask me about skill building
       };
       setMessages([welcome]);
     }
-  }, [profile.name]);
+  // Bug #19 fix: depend on full profile — profile.goal?.description is used in the
+  // welcome message body so a goal-only change must also update the welcome text.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.name, profile.goal?.description]);
+
 
   useEffect(() => {
     // Scroll to bottom on new messages

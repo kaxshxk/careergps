@@ -1,31 +1,28 @@
-/**
- * CareerMindmapView.jsx
- * Full-screen mindmap view. Replaces DecisionTreeView.
- * Manages: financial tier selector, completedMilestones (from localStorage),
- * selected node popover, zoom controls, legend.
- */
-
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   loadCompletedMilestones,
   saveCompletedMilestones,
   loadFinancialTier,
   saveFinancialTier,
+  loadNodeCache,
+  saveNodeCache,
+  loadNodeStates,
+  saveNodeStates,
+  loadCompletedGoalsList,
+  saveCompletedGoalsList
 } from "../../services/localStorageService";
-import { buildMindmapTree, NODE_COLORS } from "../../data/mindmapTreeBuilder";
+import { buildMindmapScaffold, flattenScaffold, calculateProgress, SCAFFOLD_COLORS } from "../../data/scaffoldBuilder";
 import CareerMindmap from "./CareerMindmap";
 import MindmapNodePopover from "./MindmapNodePopover";
-
-// ─────────────────────────────────────────────────────────
-// Legend
-// ─────────────────────────────────────────────────────────
+import ProgressRing from "./ProgressRing";
+import CheckpointPanel from "./CheckpointPanel";
 
 const LEGEND = [
   { type: "root",       label: "You (Start)" },
-  { type: "path",       label: "Academic Path" },
-  { type: "stream",     label: "Stream / Elective" },
-  { type: "degree",     label: "Degree" },
-  { type: "milestone",  label: "Milestone" },
+  { type: "stage",      label: "Academic Path" },
+  { type: "semester",    label: "Semester Phase" },
+  { type: "selection",   label: "Choice Point" },
+  { type: "checkpoint",  label: "Checkpoint Node" },
   { type: "cert",       label: "Certification" },
   { type: "internship", label: "Internship" },
   { type: "goal",       label: "Career Goal" },
@@ -39,37 +36,221 @@ const TIER_OPTIONS = [
   { value: "HIGH",   label: "Self-funded", desc: "All options" },
 ];
 
-// ─────────────────────────────────────────────────────────
-// View shell
-// ─────────────────────────────────────────────────────────
+// Helper to load/save user choices locally
+const loadUserSelections = () => {
+  try {
+    const raw = localStorage.getItem("career-gps:user-selections");
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+};
+
+const saveUserSelections = (selections) => {
+  try {
+    localStorage.setItem("career-gps:user-selections", JSON.stringify(selections));
+  } catch (e) {}
+};
 
 export default function CareerMindmapView({ profile, roadmap, onGoToDashboard }) {
   // ── State ──
   const [financialTier, setFinancialTier] = useState(
     () => loadFinancialTier() || profile.financialTier || "HIGH"
   );
-  const [completedMilestones, setCompletedMilestones] = useState(
-    () => new Set(loadCompletedMilestones())
-  );
+  
+  const [nodeCache, setNodeCache] = useState(() => loadNodeCache());
+  const [nodeStates, setNodeStates] = useState(() => loadNodeStates());
+  const [completedGoals, setCompletedGoals] = useState(() => new Set(loadCompletedGoalsList()));
+  const [userSelections, setUserSelections] = useState(() => loadUserSelections());
+
   const [activeNode, setActiveNode] = useState(null);
   const [isLocked, setIsLocked] = useState(false);
   const [showLegend, setShowLegend] = useState(true);
 
-  // ── Build mindmap tree ──
-  const treeData = useMemo(() => {
-    return buildMindmapTree(profile, roadmap, completedMilestones);
-  }, [profile, roadmap, completedMilestones, financialTier]); // eslint-disable-line
+  // Checkpoint panel states
+  const [showCheckpoint, setShowCheckpoint] = useState(false);
+  const [checkpointLabel, setCheckpointLabel] = useState("");
+  const [checkpointData, setCheckpointData] = useState(null);
+  const [loadingCheckpoint, setLoadingCheckpoint] = useState(false);
+
+  // Expand/collapse node IDs
+  const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set(["node-root"]));
+
+  // ── Build Mindmap Scaffold Tree ──
+  const scaffoldTree = useMemo(() => {
+    return buildMindmapScaffold(profile, nodeStates);
+  }, [profile, nodeStates]);
+
+  // Flatten scaffold for node index checks
+  const flatScaffold = useMemo(() => {
+    return flattenScaffold(scaffoldTree);
+  }, [scaffoldTree]);
+
+  // Find the current stage starting node
+  const startingNodeId = useMemo(() => {
+    const startingNode = flatScaffold.find(n => n.isCurrentStage);
+    return startingNode ? startingNode.id : "node-root";
+  }, [flatScaffold]);
+
+  // ── Recalculate states recursively based on checklist completion ──
+  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache) => {
+    // Start with a default scaffold
+    const root = buildMindmapScaffold(profile, {});
+    const flat = flattenScaffold(root);
+    const nextStates = {};
+
+    // Root is always completed
+    nextStates["node-root"] = "completed";
+
+    // Set starting node to unlocked by default if not set
+    const startNode = flat.find(n => n.isCurrentStage);
+    if (startNode) {
+      nextStates[startNode.id] = "unlocked";
+    }
+
+    function walk(node) {
+      const state = nextStates[node.id] || "locked";
+      const content = currentCache[node.id];
+      
+      // Determine if parent is done / unlocked
+      const goalsList = content?.goals || [];
+      const completedList = goalsList.filter(g => currentGoals.has(g));
+      const percentComplete = goalsList.length ? (completedList.length / goalsList.length) : 0;
+      
+      const isParentCompleted = state === "completed" || percentComplete >= 1.0;
+      const isParent80Percent = percentComplete >= 0.8;
+
+      // Unlocks children if parent is >= 80% done
+      for (const child of node.children) {
+        if (child.isSelectionPoint) {
+          const selection = currentSelections[child.id];
+          if (selection) {
+            nextStates[child.id] = "completed";
+          } else {
+            nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
+          }
+        } else if (child.isCheckpoint) {
+          nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "completed" : "locked";
+        } else {
+          // Regular node: unlocked if parent is at least 80% complete
+          const nextState = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
+          
+          // Preserve custom state if it was in_progress or completed
+          const oldState = nodeStates[child.id] || "locked";
+          if (oldState === "completed" && nextState !== "locked") {
+            nextStates[child.id] = "completed";
+          } else if (oldState === "in_progress" && nextState !== "locked") {
+            nextStates[child.id] = "in_progress";
+          } else {
+            nextStates[child.id] = nextState;
+          }
+        }
+        walk(child);
+      }
+    }
+
+    walk(root);
+    return nextStates;
+  }, [profile, nodeStates]);
+
+  // Eagerly fetch starting node content on mount
+  useEffect(() => {
+    if (startingNodeId && !nodeCache[startingNodeId]) {
+      const fetchStartNodeContent = async () => {
+        try {
+          const startingNode = flatScaffold.find(n => n.id === startingNodeId);
+          if (!startingNode) return;
+          
+          const response = await fetch("/api/node-content", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              profile,
+              nodeId: startingNodeId,
+              nodeType: startingNode.type,
+              nodeLabel: startingNode.label,
+              parentNodeLabel: "You Are Here",
+              allCompletedGoals: Array.from(completedGoals)
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const updatedCache = { ...nodeCache, [startingNodeId]: data };
+            setNodeCache(updatedCache);
+            saveNodeCache(updatedCache);
+            
+            // Re-evaluate states
+            const updatedStates = reevaluateStates(completedGoals, userSelections, updatedCache);
+            setNodeStates(updatedStates);
+            saveNodeStates(updatedStates);
+          }
+        } catch (e) {
+          console.error("Failed to eagerly fetch starting node content", e);
+        }
+      };
+      
+      fetchStartNodeContent();
+    }
+  }, [startingNodeId, nodeCache, flatScaffold, profile, completedGoals, userSelections, reevaluateStates]);
+
+  // ── Fetch node content dynamically on click ──
+  const fetchNodeContent = async (nodeId, nodeType, nodeLabel, parentNodeLabel) => {
+    if (nodeCache[nodeId]) return;
+
+    try {
+      const response = await fetch("/api/node-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          nodeId,
+          nodeType,
+          nodeLabel,
+          parentNodeLabel,
+          allCompletedGoals: Array.from(completedGoals)
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const updatedCache = { ...nodeCache, [nodeId]: data };
+        setNodeCache(updatedCache);
+        saveNodeCache(updatedCache);
+
+        // Re-evaluate states after new content is loaded
+        const updatedStates = reevaluateStates(completedGoals, userSelections, updatedCache);
+        setNodeStates(updatedStates);
+        saveNodeStates(updatedStates);
+      }
+    } catch (e) {
+      console.error("Failed to fetch node content", e);
+    }
+  };
 
   const handleNodeClick = useCallback((node) => {
     setActiveNode(node);
     setIsLocked(true);
-  }, []);
+
+    // If it's a checkpoint node, show checkpoint panel instead
+    if (node.isCheckpoint) {
+      handleCheckpointClick(node);
+      return;
+    }
+
+    // Load content dynamically
+    if (node.state !== "locked") {
+      fetchNodeContent(node.id, node.type, node.label, node.parentId);
+    }
+  }, [nodeCache, completedGoals, userSelections, reevaluateStates]);
 
   const handleNodeHover = useCallback((node) => {
     if (!isLocked) {
       setActiveNode(node);
+      // Pre-fetch hover content eagerly for smooth transition
+      if (node.state !== "locked") {
+        fetchNodeContent(node.id, node.type, node.label, node.parentId);
+      }
     }
-  }, [isLocked]);
+  }, [isLocked, nodeCache]);
 
   const handleClosePopover = useCallback(() => {
     setIsLocked(false);
@@ -81,60 +262,133 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     setActiveNode(null);
   }, []);
 
-  // ── Completion toggle ──
-  const handleToggleComplete = useCallback((milestoneId) => {
-    setCompletedMilestones(current => {
-      const next = new Set(current);
-      if (next.has(milestoneId)) {
-        next.delete(milestoneId);
-        // Cascade uncheck subsequent milestones
-        const mainMs = roadmap?.goalsToAchieve?.milestones || [];
-        const idx = mainMs.findIndex(m => m.id === milestoneId);
-        if (idx !== -1) {
-          for (let i = idx + 1; i < mainMs.length; i++) {
-            next.delete(mainMs[i].id);
-            (mainMs[i].prerequisites || []).forEach(p => next.delete(p.id));
-          }
-        }
+  // ── Checkbox checklist toggle handler ──
+  const handleToggleGoal = useCallback((goalText) => {
+    if (!activeNode) return;
+    
+    setCompletedGoals(prev => {
+      const next = new Set(prev);
+      if (next.has(goalText)) {
+        next.delete(goalText);
       } else {
-        next.add(milestoneId);
+        next.add(goalText);
       }
-      saveCompletedMilestones(next);
+      
+      // Save to local storage
+      const list = Array.from(next);
+      saveCompletedGoalsList(list);
+
+      // Recalculate status of the active node
+      const goals = nodeCache[activeNode.id]?.goals || [];
+      const completedCount = goals.filter(g => next.has(g)).length;
+      
+      let nextState = "unlocked";
+      if (completedCount === goals.length) {
+        nextState = "completed";
+      } else if (completedCount > 0) {
+        nextState = "in_progress";
+      }
+
+      const nextStates = { ...nodeStates, [activeNode.id]: nextState };
+      
+      // Propagate locks / unlocks downwards
+      const updatedStates = reevaluateStates(next, userSelections, nodeCache);
+      // Merge nextState of current activeNode
+      updatedStates[activeNode.id] = nextState;
+
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+
       return next;
     });
-  }, [roadmap]);
+  }, [activeNode, nodeCache, nodeStates, userSelections, reevaluateStates]);
 
-  // ── Tier change ──
+  // ── Selection Point choice select handler ──
+  const handleSelectOption = useCallback((nodeId, option) => {
+    const updatedSelections = { ...userSelections, [nodeId]: option };
+    setUserSelections(updatedSelections);
+    saveUserSelections(updatedSelections);
+
+    const nextStates = { ...nodeStates, [nodeId]: "completed" };
+    const updatedStates = reevaluateStates(completedGoals, updatedSelections, nodeCache);
+    updatedStates[nodeId] = "completed";
+
+    setNodeStates(updatedStates);
+    saveNodeStates(updatedStates);
+
+    // Expand selection child node auto
+    const node = flatScaffold.find(n => n.id === nodeId);
+    if (node) {
+      setExpandedNodeIds(prev => {
+        const next = new Set(prev);
+        next.add(nodeId);
+        return next;
+      });
+    }
+  }, [userSelections, nodeStates, completedGoals, nodeCache, flatScaffold, reevaluateStates]);
+
+  // ── Checkpoint display handler ──
+  const handleCheckpointClick = async (node) => {
+    setCheckpointLabel(node.label);
+    setShowCheckpoint(true);
+    setLoadingCheckpoint(true);
+    setCheckpointData(null);
+
+    // Gather completed items
+    const completedGoalsList = Array.from(completedGoals);
+    
+    // Deduplicate skills from cache of completed nodes
+    const completedSkillsSet = new Set();
+    const completedCertsList = [];
+    const completedInternshipsList = [];
+
+    flatScaffold.forEach(n => {
+      const state = nodeStates[n.id] || n.state;
+      if (state === "completed" || state === "in_progress") {
+        const content = nodeCache[n.id];
+        if (content) {
+          (content.skills || []).forEach(s => completedSkillsSet.add(s));
+          if (n.type === "cert") completedCertsList.push(n.label);
+          if (n.type === "internship") completedInternshipsList.push(n.label);
+        }
+      }
+    });
+
+    try {
+      const response = await fetch("/api/checkpoint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          checkpointLabel: node.label,
+          completedGoals: completedGoalsList,
+          completedSkills: Array.from(completedSkillsSet),
+          completedCerts: completedCertsList,
+          completedInternships: completedInternshipsList
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCheckpointData(data);
+      }
+    } catch (e) {
+      console.error("Checkpoint endpoint error", e);
+    } finally {
+      setLoadingCheckpoint(false);
+    }
+  };
+
+  // ── Financial tier change handler ──
   const handleTierChange = useCallback((tier) => {
     setFinancialTier(tier);
     saveFinancialTier(tier);
   }, []);
 
-  // ── Progress summary ──
-  const { completedCount, totalCount } = useMemo(() => {
-    const mainMs = roadmap?.goalsToAchieve?.milestones || [];
-    const certs = roadmap?.certifications || [];
-    const totalCount = mainMs.length + certs.length;
-    const completedCount = [...completedMilestones].filter(id =>
-      mainMs.some(m => m.id === id) || certs.some(c => c.id === id)
-    ).length;
-    return { completedCount, totalCount };
-  }, [roadmap, completedMilestones]);
-
-  const progressPct = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
-
-  const isNodeDisabled = useCallback((nodeId) => {
-    if (!nodeId) return false;
-    const mainMs = roadmap?.goalsToAchieve?.milestones || [];
-    const idx = mainMs.findIndex(m => m.id === nodeId);
-    if (idx <= 0) return false;
-    
-    // All preceding milestones in the full list must be completed
-    for (let i = 0; i < idx; i++) {
-      if (!completedMilestones.has(mainMs[i].id)) return true;
-    }
-    return false;
-  }, [roadmap, completedMilestones]);
+  // ── Progress statistics relative to unlocked goals ──
+  const progressStats = useMemo(() => {
+    return calculateProgress(scaffoldTree, nodeCache, nodeStates, completedGoals);
+  }, [scaffoldTree, nodeCache, nodeStates, completedGoals]);
 
   return (
     <div
@@ -142,13 +396,13 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         width: "100vw",
         height: "100vh",
         overflow: "hidden",
-        background: "#f8fafc", // slate-50 background (off-white)
+        background: "#f8fafc",
         display: "flex",
         flexDirection: "column",
-        fontFamily: "'Graphik', 'Inter', sans-serif",
+        fontFamily: "'Inter', -apple-system, sans-serif",
       }}
     >
-      {/* ── Top bar ── */}
+      {/* Top bar */}
       <header
         style={{
           display: "flex",
@@ -198,36 +452,20 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               Career GPS
             </p>
             <h1 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: 0, lineHeight: 1.2 }}>
-              Career Mindmap
+              Interactive Mindmap
             </h1>
           </div>
         </div>
 
-        {/* Centre — progress bar */}
-        <div style={{ flex: 1, maxWidth: 320, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              Progress
-            </span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>
-              {completedCount}/{totalCount} · {progressPct}%
-            </span>
-          </div>
-          <div style={{ height: 5, borderRadius: 9999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
-            <div
-              style={{
-                height: "100%",
-                width: `${progressPct}%`,
-                borderRadius: 9999,
-                background: "linear-gradient(90deg, #7c3aed, #10b981)",
-                transition: "width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
-              }}
-            />
-          </div>
+        {/* Center — progress tracker bar (backup reference) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b" }}>
+            Active Stage Goals: {progressStats.completedCount}/{progressStats.totalCount}
+          </span>
         </div>
 
-        {/* Right — tier selector + legend toggle + instructions */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Right — tier selector + legend toggle + Progress Ring */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {/* Financial tier */}
           <div style={{ display: "flex", gap: 4 }}>
             {TIER_OPTIONS.map(opt => (
@@ -249,14 +487,10 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
                   ),
                 }}
                 onMouseEnter={e => {
-                  if (financialTier !== opt.value) {
-                    e.currentTarget.style.background = "#f1f5f9";
-                  }
+                  if (financialTier !== opt.value) e.currentTarget.style.background = "#f1f5f9";
                 }}
                 onMouseLeave={e => {
-                  if (financialTier !== opt.value) {
-                    e.currentTarget.style.background = "#ffffff";
-                  }
+                  if (financialTier !== opt.value) e.currentTarget.style.background = "#ffffff";
                 }}
               >
                 {opt.label}
@@ -285,21 +519,25 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
             Legend
           </button>
 
-          {/* Zoom hint */}
-          <span style={{ fontSize: 10, color: "#94a3b8", userSelect: "none", whiteSpace: "nowrap" }}>
-            Scroll to zoom · Drag to pan
-          </span>
+          {/* Feature 1 — Progress Ring */}
+          <ProgressRing
+            percent={progressStats.percent}
+            careerGoal={profile.goal?.description || "your goal"}
+            completedCount={progressStats.completedCount}
+            totalCount={progressStats.totalCount}
+          />
         </div>
       </header>
 
-      {/* ── Canvas area ── */}
+      {/* Canvas area */}
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
         {/* Left: SVG Canvas wrapper */}
         <div style={{ flex: 1, position: "relative", height: "100%", overflow: "hidden" }}>
-          {/* Mindmap SVG */}
           <CareerMindmap
-            treeData={treeData}
-            completedMilestones={completedMilestones}
+            treeData={scaffoldTree}
+            nodeStates={nodeStates}
+            expandedNodeIds={expandedNodeIds}
+            setExpandedNodeIds={setExpandedNodeIds}
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
             onCanvasClick={handleCanvasClick}
@@ -307,7 +545,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
             profile={profile}
           />
 
-          {/* ── Legend overlay ── */}
+          {/* Legend overlay */}
           {showLegend && (
             <div
               style={{
@@ -330,7 +568,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {LEGEND.map(({ type, label }) => (
                   <div key={type} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 99, background: NODE_COLORS[type], flexShrink: 0 }} />
+                    <div style={{ width: 8, height: 8, borderRadius: 99, background: SCAFFOLD_COLORS[type] || "#6b7280", flexShrink: 0 }} />
                     <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>{label}</span>
                   </div>
                 ))}
@@ -344,17 +582,11 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
                   <div style={{ width: 8, height: 8, borderRadius: 99, background: "#3b82f6", flexShrink: 0 }} />
                   <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>In Progress</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 99, background: NODE_COLORS.skill, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>
-                    <span style={{ fontSize: 8 }}>n</span> = skills required count
-                  </span>
-                </div>
               </div>
             </div>
           )}
 
-          {/* ── User path indicator ── */}
+          {/* User path indicator */}
           <div
             style={{
               position: "absolute",
@@ -374,45 +606,35 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               boxShadow: "0 2px 10px rgba(124, 58, 237, 0.06)",
             }}
           >
-            {profile.name}'s path · {profile.goal?.description || "Career Goal"}
+            {profile.name}&apos;s path · {profile.goal?.description || "Career Goal"}
           </div>
-
-          {/* ── Hover-to-select hint ── */}
-          {!activeNode && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 20,
-                right: 20,
-                background: "rgba(255, 255, 255, 0.85)",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                padding: "8px 14px",
-                fontSize: 11,
-                color: "#64748b",
-                zIndex: 50,
-                backdropFilter: "blur(8px)",
-                userSelect: "none",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
-              }}
-            >
-              Hover over any node to view details
-            </div>
-          )}
         </div>
 
-        {/* Right Sidebar */}
+        {/* Right Sidebar Popover */}
         <div style={{ width: 380, height: "100%", flexShrink: 0, borderLeft: "1px solid #e2e8f0", zIndex: 60 }}>
           <MindmapNodePopover
             node={activeNode}
+            nodeContent={activeNode ? nodeCache[activeNode.id] : null}
             onClose={handleClosePopover}
-            onToggleComplete={handleToggleComplete}
-            completedMilestones={completedMilestones}
+            completedGoals={completedGoals}
+            onToggleGoal={handleToggleGoal}
+            disabled={activeNode ? (nodeStates[activeNode.id] || activeNode.state) === "locked" : true}
             profile={profile}
-            disabled={isNodeDisabled(activeNode?.id)}
+            userSelections={userSelections}
+            onSelectOption={handleSelectOption}
           />
         </div>
       </div>
+
+      {/* Feature 7 — Checkpoint side panel */}
+      {showCheckpoint && (
+        <CheckpointPanel
+          checkpointLabel={checkpointLabel}
+          profile={profile}
+          checkpointData={checkpointData}
+          onClose={() => setShowCheckpoint(false)}
+        />
+      )}
     </div>
   );
 }

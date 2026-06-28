@@ -9,15 +9,37 @@ const STORAGE_KEYS = {
   chatHistory: "career-gps:chat-history",
   mindmapExpanded: "career-gps:mindmap-expanded",
   mindmapZoom: "career-gps:mindmap-zoom",
+  // Bug fix: this key was used directly in RoadmapDashboard but missing here,
+  // so clearCareerGpsStorage() never cleared it — deep-week progress leaked across resets.
+  deepWeeks: "career-gps:completed-deep-weeks",
+  // New: lazy-loading mindmap state
+  nodeCache: "career-gps:node-content-cache",       // Map<nodeId, nodeContent>
+  nodeStates: "career-gps:node-states",             // Map<nodeId, state string>
+  completedGoals: "career-gps:completed-goals-list", // string[] of completed goal texts
 };
+
+/**
+ * Bug #15 fix: safely parse JSON from storage.
+ * Returns `fallback` if the value is missing, null, or contains corrupt JSON
+ * (e.g. truncated write from a previous crash, browser extension injection, or
+ * storage quota overflow mid-write).
+ */
+function safeParse(raw, fallback) {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.warn("[localStorageService] Discarding corrupt storage value:", raw?.slice?.(0, 80));
+    return fallback;
+  }
+}
 
 export function saveStudentProfile(profile) {
   localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(profile));
 }
 
 export function loadStudentProfile() {
-  const raw = localStorage.getItem(STORAGE_KEYS.profile);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.profile), null);
 }
 
 export function saveRoadmap(roadmap) {
@@ -25,8 +47,7 @@ export function saveRoadmap(roadmap) {
 }
 
 export function loadRoadmap() {
-  const raw = localStorage.getItem(STORAGE_KEYS.roadmap);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.roadmap), null);
 }
 
 export function saveFinancialTier(financialTier) {
@@ -42,8 +63,15 @@ export function saveCompletedMilestones(completedMilestones) {
 }
 
 export function loadCompletedMilestones() {
-  const raw = localStorage.getItem(STORAGE_KEYS.progress);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse(localStorage.getItem(STORAGE_KEYS.progress), []);
+}
+
+export function saveCompletedDeepWeeks(weekIds) {
+  localStorage.setItem(STORAGE_KEYS.deepWeeks, JSON.stringify(weekIds));
+}
+
+export function loadCompletedDeepWeeks() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.deepWeeks), []);
 }
 
 export function saveDeepRoadmap(deepRoadmap) {
@@ -51,8 +79,7 @@ export function saveDeepRoadmap(deepRoadmap) {
 }
 
 export function loadDeepRoadmap() {
-  const raw = localStorage.getItem(STORAGE_KEYS.deepRoadmap);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.deepRoadmap), null);
 }
 
 export function saveResumeAnalysis(analysis) {
@@ -60,8 +87,7 @@ export function saveResumeAnalysis(analysis) {
 }
 
 export function loadResumeAnalysis() {
-  const raw = localStorage.getItem(STORAGE_KEYS.resumeAnalysis);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.resumeAnalysis), null);
 }
 
 export function saveMarketIntel(intel) {
@@ -69,8 +95,7 @@ export function saveMarketIntel(intel) {
 }
 
 export function loadMarketIntel() {
-  const raw = localStorage.getItem(STORAGE_KEYS.marketIntel);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.marketIntel), null);
 }
 
 export function saveChatHistory(history) {
@@ -78,8 +103,7 @@ export function saveChatHistory(history) {
 }
 
 export function loadChatHistory() {
-  const raw = localStorage.getItem(STORAGE_KEYS.chatHistory);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse(localStorage.getItem(STORAGE_KEYS.chatHistory), []);
 }
 
 export function saveMindmapExpandedNodes(nodeIds) {
@@ -90,8 +114,7 @@ export function saveMindmapExpandedNodes(nodeIds) {
 
 export function loadMindmapExpandedNodes() {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEYS.mindmapExpanded);
-    return raw ? JSON.parse(raw) : null;
+    return safeParse(sessionStorage.getItem(STORAGE_KEYS.mindmapExpanded), null);
   } catch (e) { return null; }
 }
 
@@ -103,8 +126,7 @@ export function saveMindmapZoom(transform) {
 
 export function loadMindmapZoom() {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEYS.mindmapZoom);
-    return raw ? JSON.parse(raw) : null;
+    return safeParse(sessionStorage.getItem(STORAGE_KEYS.mindmapZoom), null);
   } catch (e) { return null; }
 }
 
@@ -115,4 +137,42 @@ export function clearCareerGpsStorage() {
       sessionStorage.removeItem(key);
     } catch (e) {}
   });
+}
+
+// ─────────────────────────────────────────────────────────
+// Node Content Cache — stores lazy-loaded AI content per node
+// ─────────────────────────────────────────────────────────
+
+export function saveNodeCache(cache) {
+  // cache is a plain object: { [nodeId]: nodeContent }
+  localStorage.setItem(STORAGE_KEYS.nodeCache, JSON.stringify(cache));
+}
+
+export function loadNodeCache() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.nodeCache), {});
+}
+
+// ─────────────────────────────────────────────────────────
+// Node States — tracks lock/unlock/completed state per node
+// ─────────────────────────────────────────────────────────
+
+export function saveNodeStates(states) {
+  // states is a plain object: { [nodeId]: "locked" | "unlocked" | "in_progress" | "completed" }
+  localStorage.setItem(STORAGE_KEYS.nodeStates, JSON.stringify(states));
+}
+
+export function loadNodeStates() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.nodeStates), {});
+}
+
+// ─────────────────────────────────────────────────────────
+// Completed Goals List — for zero-repetition in API calls
+// ─────────────────────────────────────────────────────────
+
+export function saveCompletedGoalsList(goalTexts) {
+  localStorage.setItem(STORAGE_KEYS.completedGoals, JSON.stringify(goalTexts));
+}
+
+export function loadCompletedGoalsList() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.completedGoals), []);
 }

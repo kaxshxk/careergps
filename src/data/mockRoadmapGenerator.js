@@ -657,52 +657,114 @@ export function generateMockRoadmap(profile) {
   };
 
   // 1. Define Phase 1 Milestones Template
-  const getPhase1Milestones = () => [
-    {
-      id: "goal-1",
-      title: "Explore Curiosity & Hobby Logic",
-      detail: "Start exploring visual logic games and Scratch. Focus on building creative problem-solving skills (1-2 hours/week maximum). Prioritize sports and family dinners.",
-      timeframe: "Month 3",
-      phase: "goalsToAchieve",
-      prerequisites: [
-        { id: "pre-1-1", title: "Logical puzzles", detail: "Solve 5 basic logical games or visual puzzles.", phase: "goalsToAchieve", timeframe: "Month 3", prerequisites: [] },
-        { id: "pre-1-2", title: "Sports & Hobbies", detail: "Play with friends and spend time outdoors daily.", phase: "goalsToAchieve", timeframe: "Month 3", prerequisites: [] }
-      ]
-    },
-    {
-      id: "goal-2",
-      title: "Build Digital Literacy Basics",
-      detail: "Learn basic internet research, how word processors/spreadsheets work, and keep up with standard school academics and homework.",
-      timeframe: "Month 6",
-      phase: "goalsToAchieve",
-      prerequisites: [
-        { id: "pre-2-1", title: "Keyboard confidence", detail: "Practice typing daily and learn search shortcuts.", phase: "goalsToAchieve", timeframe: "Month 6", prerequisites: [] },
-        { id: "pre-2-2", title: "Scratch Project", detail: "Build a very simple mini-game using Scratch block coding.", phase: "goalsToAchieve", timeframe: "Month 6", prerequisites: [] }
-      ]
-    },
-    {
-      id: "goal-3",
-      title: "Deepen Logic & Basic Science Concepts",
-      detail: "Explore interesting math and science topics. Keep learning light, balance school syllabus, and maintain a healthy, active personal life.",
-      timeframe: "Month 12",
-      phase: "goalsToAchieve",
-      prerequisites: [
-        { id: "pre-3-1", title: "Subject mastery", detail: "Master basic arithmetic and physics/commerce units in school.", phase: "goalsToAchieve", timeframe: "Month 12", prerequisites: [] },
-        { id: "pre-3-2", title: "Create simple webpage", detail: "Code a very basic HTML/CSS page with a custom header.", phase: "goalsToAchieve", timeframe: "Month 12", prerequisites: [] }
-      ]
-    },
-    {
-      id: "goal-4",
-      title: "10th Board Preparation & Stream Guidance",
-      detail: "Prepare thoroughly for Class 10 school board examinations. Research CBSE, State Intermediate, and Polytechnic stream choices for next year.",
-      timeframe: "Year 2 (10th Grade)",
-      phase: "goalsToAchieve",
-      prerequisites: [
-        { id: "pre-4-1", title: "Board mock tests", detail: "Complete 3 full board mock papers to build confidence.", phase: "goalsToAchieve", timeframe: "Year 2 (10th Grade)", prerequisites: [] },
-        { id: "pre-4-2", title: "Stream Selection Survey", detail: "Compare courses and discuss with parent/adviser.", phase: "goalsToAchieve", timeframe: "Year 2 (10th Grade)", prerequisites: [] }
-      ]
+  // 1. Define Phase 1 Milestones Template
+  const getPhase1Milestones = () => {
+    const isChef = (profile.goal?.description || "").toLowerCase().includes("chef") ||
+                   (profile.goal?.description || "").toLowerCase().includes("culinary") ||
+                   (profile.goal?.description || "").toLowerCase().includes("cook") ||
+                   (profile.goal?.description || "").toLowerCase().includes("hotel") ||
+                   (profile.goal?.description || "").toLowerCase().includes("bakery") ||
+                   (profile.goal?.description || "").toLowerCase().includes("food") ||
+                   (profile.goal?.description || "").toLowerCase().includes("restaurant") ||
+                   (profile.field?.customValue || "").toLowerCase().includes("chef") ||
+                   (profile.field?.customValue || "").toLowerCase().includes("culinary");
+
+    if (isChef) {
+      return [
+        {
+          id: "goal-1",
+          title: "Explore Cooking Curiosity & Flavor Basics",
+          detail: "Start exploring taste profiles and helper tasks in home cooking under adult supervision. Prioritize sports and family dinners.",
+          timeframe: "Month 3",
+          phase: "goalsToAchieve",
+          prerequisites: [
+            { id: "pre-1-1", title: "Flavor experiments", detail: "Practice mixing basic sweet, sour, salty, and savory ingredients.", phase: "goalsToAchieve", timeframe: "Month 3", prerequisites: [] },
+            { id: "pre-1-2", title: "Sports & Hobbies", detail: "Play with friends and spend time outdoors daily.", phase: "goalsToAchieve", timeframe: "Month 3", prerequisites: [] }
+          ]
+        },
+        {
+          id: "goal-2",
+          title: "Build Kitchen Safety & Measurement Basics",
+          detail: "Learn stove safety, washing knives under adult guidance, and convert measurement metrics for simple family recipes.",
+          timeframe: "Month 6",
+          phase: "goalsToAchieve",
+          prerequisites: [
+            { id: "pre-2-1", title: "Kitchen safety", detail: "Practice safe handling of hot containers and kitchen sanitation.", phase: "goalsToAchieve", timeframe: "Month 6", prerequisites: [] },
+            { id: "pre-2-2", title: "Recipe scaling", detail: "Convert recipe cups to grams and halve or double ingredient proportions.", phase: "goalsToAchieve", timeframe: "Month 6", prerequisites: [] }
+          ]
+        },
+        {
+          id: "goal-3",
+          title: "Deepen Food Science & Biology Concepts",
+          detail: "Explore interesting cooking chemistry (fermentation, emulsification). Balance school curriculum and maintain active personal life.",
+          timeframe: "Month 12",
+          phase: "goalsToAchieve",
+          prerequisites: [
+            { id: "pre-3-1", title: "Subject mastery", detail: "Master basic chemical reactions and biology units in school syllabus.", phase: "goalsToAchieve", timeframe: "Month 12", prerequisites: [] },
+            { id: "pre-3-2", title: "First complete dish", detail: "Cook a basic 3-ingredient dish entirely by yourself under supervision.", phase: "goalsToAchieve", timeframe: "Month 12", prerequisites: [] }
+          ]
+        },
+        {
+          id: "goal-4",
+          title: "10th Board Preparation & Stream Guidance",
+          detail: "Prepare thoroughly for Class 10 school board examinations. Research vocational courses or Intermediate stream choices.",
+          timeframe: "Year 2 (10th Grade)",
+          phase: "goalsToAchieve",
+          prerequisites: [
+            { id: "pre-4-1", title: "Board mock tests", detail: "Complete 3 full board mock papers to build confidence.", phase: "goalsToAchieve", timeframe: "Year 2 (10th Grade)", prerequisites: [] },
+            { id: "pre-4-2", title: "Culinary Stream Survey", detail: "Compare hotel management or culinary diplomas and discuss with parents.", phase: "goalsToAchieve", timeframe: "Year 2 (10th Grade)", prerequisites: [] }
+          ]
+        }
+      ];
     }
-  ];
+
+    return [
+      {
+        id: "goal-1",
+        title: "Explore Curiosity & Hobby Logic",
+        detail: "Start exploring visual logic games and Scratch. Focus on building creative problem-solving skills (1-2 hours/week maximum). Prioritize sports and family dinners.",
+        timeframe: "Month 3",
+        phase: "goalsToAchieve",
+        prerequisites: [
+          { id: "pre-1-1", title: "Logical puzzles", detail: "Solve 5 basic logical games or visual puzzles.", phase: "goalsToAchieve", timeframe: "Month 3", prerequisites: [] },
+          { id: "pre-1-2", title: "Sports & Hobbies", detail: "Play with friends and spend time outdoors daily.", phase: "goalsToAchieve", timeframe: "Month 3", prerequisites: [] }
+        ]
+      },
+      {
+        id: "goal-2",
+        title: "Build Digital Literacy Basics",
+        detail: "Learn basic internet research, how word processors/spreadsheets work, and keep up with standard school academics and homework.",
+        timeframe: "Month 6",
+        phase: "goalsToAchieve",
+        prerequisites: [
+          { id: "pre-2-1", title: "Keyboard confidence", detail: "Practice typing daily and learn search shortcuts.", phase: "goalsToAchieve", timeframe: "Month 6", prerequisites: [] },
+          { id: "pre-2-2", title: "Scratch Project", detail: "Build a very simple mini-game using Scratch block coding.", phase: "goalsToAchieve", timeframe: "Month 6", prerequisites: [] }
+        ]
+      },
+      {
+        id: "goal-3",
+        title: "Deepen Logic & Basic Science Concepts",
+        detail: "Explore interesting math and science topics. Keep learning light, balance school syllabus, and maintain a healthy, active personal life.",
+        timeframe: "Month 12",
+        phase: "goalsToAchieve",
+        prerequisites: [
+          { id: "pre-3-1", title: "Subject mastery", detail: "Master basic arithmetic and physics/commerce units in school.", phase: "goalsToAchieve", timeframe: "Month 12", prerequisites: [] },
+          { id: "pre-3-2", title: "Create simple webpage", detail: "Code a very basic HTML/CSS page with a custom header.", phase: "goalsToAchieve", timeframe: "Month 12", prerequisites: [] }
+        ]
+      },
+      {
+        id: "goal-4",
+        title: "10th Board Preparation & Stream Guidance",
+        detail: "Prepare thoroughly for Class 10 school board examinations. Research CBSE, State Intermediate, and Polytechnic stream choices for next year.",
+        timeframe: "Year 2 (10th Grade)",
+        phase: "goalsToAchieve",
+        prerequisites: [
+          { id: "pre-4-1", title: "Board mock tests", detail: "Complete 3 full board mock papers to build confidence.", phase: "goalsToAchieve", timeframe: "Year 2 (10th Grade)", prerequisites: [] },
+          { id: "pre-4-2", title: "Stream Selection Survey", detail: "Compare courses and discuss with parent/adviser.", phase: "goalsToAchieve", timeframe: "Year 2 (10th Grade)", prerequisites: [] }
+        ]
+      }
+    ];
+  };
 
   // 2. Define Phase 2 Milestones Template
   const getPhase2Milestones = () => {
@@ -831,44 +893,44 @@ export function generateMockRoadmap(profile) {
         id: "goal-1",
         title: "Focus Strictly on College Academics",
         detail: `Adapt to the university curriculum in ${degree}. Focus entirely on building academic foundations, maintaining a high GPA, and joining college clubs. No internships or heavy work required.`,
-        timeframe: "Year 1 (College 1st Year)",
+        timeframe: "Undergrad Sem 1-2",
         phase: "goalsToAchieve",
         prerequisites: [
-          { id: "pre-1-1", title: "Maintain high GPA", detail: `Focus on score optimization in core foundational modules of your ${degree} program.`, phase: "goalsToAchieve", timeframe: "Year 1 (College 1st Year)", prerequisites: [] },
-          { id: "pre-1-2", title: "Campus assimilation", detail: "Join 1 field-related student branch or academic/hobby club.", phase: "goalsToAchieve", timeframe: "Year 1 (College 1st Year)", prerequisites: [] }
+          { id: "pre-1-1", title: "Maintain high GPA", detail: `Focus on score optimization in core foundational modules of your ${degree} program.`, phase: "goalsToAchieve", timeframe: "Undergrad Sem 1-2", prerequisites: [] },
+          { id: "pre-1-2", title: "Campus assimilation", detail: "Join 1 field-related student branch or academic/hobby club.", phase: "goalsToAchieve", timeframe: "Undergrad Sem 1-2", prerequisites: [] }
         ]
       },
       {
         id: "goal-2",
         title: "Build Portfolio & Apply for Internships",
         detail: `Commence skill specialized learning in ${field}. Create hands-on projects and apply for your first paid internship via Internshala or LinkedIn.`,
-        timeframe: "Year 2 (College 2nd Year)",
+        timeframe: "Undergrad Sem 3-4",
         phase: "goalsToAchieve",
         prerequisites: [
-          { id: "pre-2-1", title: "Professional Cert", detail: `Earn a professional certification like ${fieldConfig.certs[0]?.name || 'a relevant domain credential'} from ${fieldConfig.certs[0]?.platform || 'a recognized provider'}.`, phase: "goalsToAchieve", timeframe: "Year 2 (College 2nd Year)", prerequisites: [] },
-          { id: "pre-2-2", title: "Internship search", detail: `Apply to 10+ stipend-based roles in ${field} on Internshala or target platforms.`, phase: "goalsToAchieve", timeframe: "Year 2 (College 2nd Year)", prerequisites: [] }
+          { id: "pre-2-1", title: "Professional Cert", detail: `Earn a professional certification like ${fieldConfig.certs[0]?.name || 'a relevant domain credential'} from ${fieldConfig.certs[0]?.platform || 'a recognized provider'}.`, phase: "goalsToAchieve", timeframe: "Undergrad Sem 3-4", prerequisites: [] },
+          { id: "pre-2-2", title: "Internship search", detail: `Apply to 10+ stipend-based roles in ${field} on Internshala or target platforms.`, phase: "goalsToAchieve", timeframe: "Undergrad Sem 3-4", prerequisites: [] }
         ]
       },
       {
         id: "goal-3",
         title: "Placement Preparation & Advanced Projects",
         detail: `Deepen your expertise in ${field}. Conduct mock interviews, study field-specific case studies, and complete an advanced capstone project.`,
-        timeframe: "Year 3 (College 3rd Year)",
+        timeframe: "Undergrad Sem 5-6",
         phase: "goalsToAchieve",
         prerequisites: [
-          { id: "pre-3-1", title: "Advanced Capstone", detail: `Complete a capstone project such as ${fieldConfig.portfolio || 'a comprehensive portfolio project'}.`, phase: "goalsToAchieve", timeframe: "Year 3 (College 3rd Year)", prerequisites: [] },
-          { id: "pre-3-2", title: "Study common scenarios", detail: `Review core terminology, methodologies, case studies, or operational scenarios in ${field}.`, phase: "goalsToAchieve", timeframe: "Year 3 (College 3rd Year)", prerequisites: [] }
+          { id: "pre-3-1", title: "Advanced Capstone", detail: `Complete a capstone project such as ${fieldConfig.portfolio || 'a comprehensive portfolio project'}.`, phase: "goalsToAchieve", timeframe: "Undergrad Sem 5-6", prerequisites: [] },
+          { id: "pre-3-2", title: "Study common scenarios", detail: `Review core terminology, methodologies, case studies, or operational scenarios in ${field}.`, phase: "goalsToAchieve", timeframe: "Undergrad Sem 5-6", prerequisites: [] }
         ]
       },
       {
         id: "goal-4",
         title: "Final Placements & University Graduation",
         detail: `Apply for direct jobs or sit for campus placement drives (${collegeFocus}). Successfully graduate from university and prepare for professional operatorship.`,
-        timeframe: "Year 4 (Final Year)",
+        timeframe: "Undergrad Sem 7-8",
         phase: "goalsToAchieve",
         prerequisites: [
-          { id: "pre-4-1", title: "Placement drives", detail: "Apply to at least 15 entry-level positions.", phase: "goalsToAchieve", timeframe: "Year 4 (Final Year)", prerequisites: [] },
-          { id: "pre-4-2", title: "Clear university exams", detail: "Successfully complete university degree requirements.", phase: "goalsToAchieve", timeframe: "Year 4 (Final Year)", prerequisites: [] }
+          { id: "pre-4-1", title: "Placement drives", detail: "Apply to at least 15 entry-level positions.", phase: "goalsToAchieve", timeframe: "Undergrad Sem 7-8", prerequisites: [] },
+          { id: "pre-4-2", title: "Clear university exams", detail: "Successfully complete university degree requirements.", phase: "goalsToAchieve", timeframe: "Undergrad Sem 7-8", prerequisites: [] }
         ]
       }
     ];

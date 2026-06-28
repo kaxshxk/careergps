@@ -145,6 +145,32 @@ function getMilestoneStage(timeframe, title = "", detail = "") {
   const t = (title || "").toLowerCase();
   const d = (detail || "").toLowerCase();
 
+  // Intercept school milestones that mention school levels/boards in title or detail
+  const isSchoolText = 
+    t.includes("11th standard") || d.includes("11th standard") ||
+    t.includes("12th standard") || d.includes("12th standard") ||
+    t.includes("10th standard") || d.includes("10th standard") ||
+    t.includes("inter year 1") || d.includes("inter year 1") ||
+    t.includes("inter year 2") || d.includes("inter year 2") ||
+    t.includes("10th board") || d.includes("10th board") ||
+    t.includes("12th board") || d.includes("12th board") ||
+    ((t.includes("board exam") || d.includes("board exam")) && !t.includes("certification") && !t.includes("residency")) ||
+    (t.includes("board / year 1 exam") || t.includes("board / year 2 exam")) ||
+    (t.includes("higher secondary") || d.includes("higher secondary"));
+
+  if (isSchoolText) {
+    if (t.includes("12th") || t.includes("year 2") || d.includes("12th") || d.includes("inter year 2")) {
+      return "school-12";
+    }
+    if (t.includes("11th") || t.includes("year 1") || d.includes("11th") || d.includes("inter year 1")) {
+      return "school-11";
+    }
+    if (t.includes("10th") || d.includes("10th")) {
+      return "school-10";
+    }
+    return "school-11";
+  }
+
   // ─── PRIORITY 0: Grade/class number in timeframe is the strongest signal ───
   // Check grade/class numbers FIRST before any other pattern to prevent
   // misclassification (e.g. Grade 11 timeframes must not fall into diploma buckets)
@@ -270,6 +296,12 @@ function getMilestoneStage(timeframe, title = "", detail = "") {
   if (tf.includes("pg year 1")) return "college-1";
   if (tf.includes("pg year 2")) return "college-2";
 
+  // Semester-specific timeframes (undergrad semesters 1-8)
+  if (tf.includes("sem 1") || tf.includes("sem 2") || tf.includes("semester 1") || tf.includes("semester 2")) return "college-1";
+  if (tf.includes("sem 3") || tf.includes("sem 4") || tf.includes("semester 3") || tf.includes("semester 4")) return "college-2";
+  if (tf.includes("sem 5") || tf.includes("sem 6") || tf.includes("semester 5") || tf.includes("semester 6")) return "college-3";
+  if (tf.includes("sem 7") || tf.includes("sem 8") || tf.includes("semester 7") || tf.includes("semester 8")) return "college-4";
+
   // Generic "year N" fallbacks (only after explicit college and diploma checks)
   if (tf.includes("year 1")) return "college-1";
   if (tf.includes("year 2")) return "college-2";
@@ -297,7 +329,229 @@ function getMilestoneStage(timeframe, title = "", detail = "") {
   return "unknown";
 }
 
-function buildSkillsNode(nodeId, roadmap) {
+function buildSkillsNode(nodeId, roadmap, profile, milestoneIds = []) {
+  const careerGoal = profile?.goal?.description || "";
+  const fieldType = profile?.field?.type || "TECH";
+
+  const isChefGoal = careerGoal.toLowerCase().includes("chef") ||
+                     careerGoal.toLowerCase().includes("culinary") ||
+                     careerGoal.toLowerCase().includes("cook") ||
+                     careerGoal.toLowerCase().includes("hotel") ||
+                     careerGoal.toLowerCase().includes("bakery") ||
+                     careerGoal.toLowerCase().includes("food") ||
+                     careerGoal.toLowerCase().includes("restaurant");
+
+  const activeField = isChefGoal ? "CHEF" : fieldType;
+
+  // Extract dynamic skills from Gemini API generated skillGap
+  let dynamicNeed = [];
+  if (roadmap?.skillGap?.need && milestoneIds.length > 0) {
+    roadmap.skillGap.need.forEach(item => {
+      if (milestoneIds.includes(item.milestoneId)) {
+        dynamicNeed.push(item.skill);
+      }
+    });
+  }
+
+  // If we found dynamic skills matching this stage/milestone, prioritize them!
+  if (dynamicNeed.length > 0) {
+    const bridgingSteps = roadmap.skillGap.bridgingSteps || [
+      "Follow the milestone objectives sequentially.",
+      "Complete recommended coursework.",
+      "Build a project demonstrating these skills."
+    ];
+    
+    return node(
+      `${nodeId}-skill-gap-root`,
+      "Skills to Build",
+      "skill",
+      "Current Stage",
+      `You currently have: ${roadmap.skillGap.have?.join(", ") || "foundational skills"}.\nBridging steps:\n${bridgingSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      {
+        skills: dynamicNeed,
+        children: [],
+        isUserPath: true
+      }
+    );
+  }
+
+  // Otherwise, fallback to the smart offline stage-specific/goal-specific defaults
+  const isSchoolNode = nodeId.includes("school") || nodeId.includes("11th") || nodeId.includes("12th") || nodeId.includes("stream");
+  if (isSchoolNode) {
+    let have = ["Basic digital literacy", "Curiosity"];
+    let need = [];
+    let steps = [];
+
+    if (nodeId.includes("8")) {
+      // Grade 8
+      if (activeField === "TECH") {
+        have = ["Basic typing", "Curiosity", "Simple computer apps"];
+        need = ["Logical reasoning", "Basic Math foundations", "Block-based coding (Scratch)"];
+        steps = [
+          "Practice daily analytical puzzles.",
+          "Excel in standard school mathematics.",
+          "Explore Scratch visual programming to build basic logical loops."
+        ];
+      } else if (activeField === "MEDICINE" || activeField === "SCIENCE") {
+        have = ["Basic scientific interest", "Observational curiosity"];
+        need = ["Basic biology classification", "Scientific observation", "First Aid fundamentals"];
+        steps = [
+          "Maintain a simple botany or chemistry observation diary.",
+          "Understand basic hygiene, pathogens, and emergency First Aid steps.",
+          "Excel in school biology and physical sciences."
+        ];
+      } else if (activeField === "COMMERCE") {
+        have = ["Basic arithmetic", "Curiosity"];
+        need = ["Logical calculations", "Decision-making heuristics", "Introductory financial concepts"];
+        steps = [
+          "Excel in basic school math calculations.",
+          "Explore simple household budgeting exercises.",
+          "Practice basic analytical puzzles."
+        ];
+      } else if (activeField === "LAW" || activeField === "ARTS" || activeField === "DESIGN") {
+        have = ["Language skills", "Creative interests"];
+        need = ["Creative writing", "Public speaking basics", "Visual logic / sketching"];
+        steps = [
+          "Practice writing weekly essays or short stories.",
+          "Participate in school debates or declamation events.",
+          "Explore basic drawing, composition, or photography."
+        ];
+      } else if (activeField === "CHEF") {
+        have = ["Helping in kitchen", "Taste interest", "Manual dexterity"];
+        need = ["Ingredient science", "Kitchen safety basics", "Sensory taste profiles"];
+        steps = [
+          "Help measure out weights and volumes for home cooking recipe science.",
+          "Understand stove and knife safety basics under adult supervision.",
+          "Explore spice combinations and flavor tasting exercises."
+        ];
+      } else {
+        have = ["Basic logic", "Curiosity"];
+        need = ["Logical reasoning", "Basic Math foundations", "Communication skills"];
+        steps = [
+          "Practice daily analytical puzzles.",
+          "Excel in standard school mathematics.",
+          "Read diverse fiction/non-fiction books weekly."
+        ];
+      }
+    } else if (nodeId.includes("9") || nodeId.includes("10")) {
+      // Grade 9-10
+      if (activeField === "TECH") {
+        have = ["Computer literacy", "Logical basics", "Analytical interest"];
+        need = ["Board exam writing skills", "Problem-solving heuristics", "Introductory coding concepts"];
+        steps = [
+          "Focus heavily on school science and mathematics boards.",
+          "Solve logical reasoning test papers.",
+          "Improve typing speed and try simple CLI programs (e.g. basic Python)."
+        ];
+      } else if (activeField === "MEDICINE" || activeField === "SCIENCE") {
+        have = ["Scientific diagrams", "Academic memory"];
+        need = ["Board exam writing skills", "High-school Biology/Chemistry foundations", "Scientific experiment protocols"];
+        steps = [
+          "Focus heavily on high-school biology, anatomy, and chemistry boards.",
+          "Read popular science books or documentaries about physiology and medicine.",
+          "Practice drawing neat labeled scientific diagrams for exams."
+        ];
+      } else if (activeField === "COMMERCE") {
+        have = ["Percentage arithmetic", "Analytical interests"];
+        need = ["Board exam writing skills", "Basic financial accounting", "Economic logic"];
+        steps = [
+          "Excel in school mathematics and social studies (economics) boards.",
+          "Understand basic concepts of saving, inflation, and simple interest.",
+          "Analyze real-world business case studies of retail shops."
+        ];
+      } else if (activeField === "LAW" || activeField === "ARTS" || activeField === "DESIGN") {
+        have = ["Advanced composition", "Public speaking comfort"];
+        need = ["Board exam writing skills", "Critical analysis", "Portfolio sketching / voice training"];
+        steps = [
+          "Excel in school social sciences and languages boards.",
+          "Practice writing persuasive debates and structured essays.",
+          "Start building a portfolio of art, design, or writing pieces."
+        ];
+      } else if (activeField === "CHEF") {
+        have = ["Recipe following", "Heat/cooking familiarity"];
+        need = ["Board exam writing skills", "Culinary math & proportions", "Basic food hygiene principles"];
+        steps = [
+          "Excel in school board exams (focus on chemistry of heat/matter).",
+          "Learn measurement conversions: metric to imperial, scaling recipes.",
+          "Study food safety guidelines: cross-contamination, safe temperatures."
+        ];
+      } else {
+        have = ["Reading habit", "Syllabus mapping"];
+        need = ["Board exam writing skills", "Communication confidence", "Logical heuristics"];
+        steps = [
+          "Focus heavily on school board examination scores.",
+          "Practice public presentation or speaking topics.",
+          "Solve basic analytical aptitude tests."
+        ];
+      }
+    } else {
+      // Grade 11-12
+      if (activeField === "TECH") {
+        have = ["Syllabus basics", "Algorithmic thinking foundations"];
+        need = ["Advanced Physics/Math core", "Entrance test aptitude", "Basic scripting syntax"];
+        steps = [
+          "Master higher secondary science and math syllabi.",
+          "Practice timed entrance-exam mock tests (JEE/NEET/CUET format).",
+          "Learn basic syntax rules of programming or business spreadsheets."
+        ];
+      } else if (activeField === "MEDICINE" || activeField === "SCIENCE") {
+        have = ["Biological systems basics", "Academic chemistry comfort"];
+        need = ["Advanced Biology/Chemistry core", "Pre-medical entrance aptitude", "Basic lab protocols"];
+        steps = [
+          "Master higher secondary biology and chemistry syllabi.",
+          "Solve NEET / biology-based entrance mock papers under time constraints.",
+          "Learn basic biological lab safety rules and clinical concepts."
+        ];
+      } else if (activeField === "COMMERCE") {
+        have = ["Accounting entries comfort", "Economic structures basics"];
+        need = ["Business math core", "Commerce stream basics", "Excel modeling concepts"];
+        steps = [
+          "Master accountancy, business studies, and economics syllabi.",
+          "Solve CUET/commerce entrance tests mock papers.",
+          "Learn basic Excel sheet calculations and formulas."
+        ];
+      } else if (activeField === "LAW" || activeField === "ARTS" || activeField === "DESIGN") {
+        have = ["Essay composition excellence", "Current affairs baseline"];
+        need = ["Legal aptitude / General knowledge", "Logical reasoning", "Advanced composition"];
+        steps = [
+          "Read daily news editorials and study basic constitutional law principles.",
+          "Solve CLAT/CUET mock tests and critical reasoning sections.",
+          "Refine your creative design or writing portfolio."
+        ];
+      } else if (activeField === "CHEF") {
+        have = ["Basic culinary techniques", "Kitchen chemistry baseline"];
+        need = ["Food chemistry & heat transfer", "Culinary history & techniques", "Kitchen teamwork basics"];
+        steps = [
+          "Study how heat affects proteins, starches, and fats (culinary science).",
+          "Research classic culinary techniques (French mother sauces, baking ratios).",
+          "Participate in team-based activities or hospitality volunteer roles."
+        ];
+      } else {
+        have = ["Higher secondary curriculum"];
+        need = ["Analytical reasoning", "Aptitude target settings", "Soft skills baseline"];
+        steps = [
+          "Master stream-specific higher secondary courses.",
+          "Solve general entrance mock exams (CUET / regional aptitude tests).",
+          "Practice verbal communications and interpersonal interactions."
+        ];
+      }
+    }
+
+    return node(
+      `${nodeId}-skill-gap-root`,
+      "Skills to Build",
+      "skill",
+      "Current Stage",
+      `You currently have: ${have.join(", ")}.\nBridging steps:\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      {
+        skills: need,
+        children: [],
+        isUserPath: true
+      }
+    );
+  }
+
+  // Otherwise, use the career-oriented skills from roadmap
   const skillGap = roadmap.skillGap;
   if (!skillGap) return null;
   return node(
@@ -308,6 +562,218 @@ function buildSkillsNode(nodeId, roadmap) {
     `You currently have: ${skillGap.have?.join(", ") || "foundational skills"}.\nBridging steps:\n${(skillGap.bridgingSteps || []).map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
     {
       skills: skillGap.need?.map(n => n.skill) || [],
+      children: [],
+      isUserPath: true
+    }
+  );
+}
+
+function buildYearSpecificSkillsNode(degreeId, year, profile, roadmap, milestoneIds = []) {
+  // Extract dynamic skills from Gemini API generated skillGap
+  let dynamicNeed = [];
+  if (roadmap?.skillGap?.need && milestoneIds.length > 0) {
+    roadmap.skillGap.need.forEach(item => {
+      if (milestoneIds.includes(item.milestoneId)) {
+        dynamicNeed.push(item.skill);
+      }
+    });
+  }
+
+  // If we found dynamic skills matching this stage/milestone, prioritize them!
+  if (dynamicNeed.length > 0) {
+    const bridgingSteps = roadmap.skillGap.bridgingSteps || [
+      "Follow the milestone objectives sequentially.",
+      "Complete recommended coursework.",
+      "Build a project demonstrating these skills."
+    ];
+    
+    return node(
+      `${degreeId}-year-${year}-skills`,
+      "Skills to Build",
+      "skill",
+      `Year ${year} Focus`,
+      `You currently have: ${roadmap.skillGap.have?.join(", ") || "foundational skills"}.\nBridging steps:\n${bridgingSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      {
+        skills: dynamicNeed,
+        children: [],
+        isUserPath: true
+      }
+    );
+  }
+
+  const isWorking = degreeId.includes("working");
+  const isPostgrad = degreeId.includes("pg");
+  const isUg = !isWorking && !isPostgrad;
+
+  let have = [];
+  let need = [];
+  let steps = [];
+
+  if (isUg) {
+    if (year === 1) {
+      have = ["Basic logic", "High school mathematics"];
+      need = ["Academic algorithms", "C/C++/Python coding logic", "Foundational GPA modules"];
+      steps = [
+        "Master college algebra and discrete structures.",
+        "Practice coding simple data structures on paper and IDE.",
+        "Attend core programming tutorials and maintain >8.0 GPA."
+      ];
+    } else if (year === 2) {
+      have = ["Basic scripting syntax", "Classroom foundations"];
+      need = ["Web frameworks/databases", "Version control (Git)", "Developer environment setup"];
+      steps = [
+        "Learn Git workflow: branch, commit, push/pull requests.",
+        "Build a simple CRUD application using a standard database (SQL/MongoDB).",
+        "Prepare and register for your first foundational industry certification."
+      ];
+    } else if (year === 3) {
+      have = ["Version control", "Basic web/database CRUD projects"];
+      need = ["Portfolio building", "Mock coding tests", "Stipend-based internship preparation"];
+      steps = [
+        "Create a personal GitHub portfolio showcasing at least 2 complete projects.",
+        "Practice timed data structures & algorithms puzzles (LeetCode/HackerRank).",
+        "Write a clean resume and apply to stipend-paying internships."
+      ];
+    } else if (year === 4) {
+      have = ["Resume draft", "Basic internship/project experience"];
+      need = ["System Design concepts", "Mock HR & technical interviews", "Graduation capstone delivery"];
+      steps = [
+        "Understand system scaling, API design, and database normalization.",
+        "Perform at least 3 peer-to-peer mock interviews.",
+        "Complete and document your final-year capstone project."
+      ];
+    }
+  } else if (isPostgrad) {
+    if (year === 1) {
+      have = ["Undergrad degree foundations"];
+      need = ["Research methodology", "Advanced domain algorithms", "Specialized tech stack"];
+      steps = [
+        "Read 5 seminal research papers in your target field.",
+        "Master advanced theoretical modules and algorithms.",
+        "Identify potential thesis advisor and define research topic area."
+      ];
+    } else {
+      have = ["Thesis topic defined", "Literature review complete"];
+      need = ["Thesis dissertation writing", "Journal paper publication guidelines", "Specialized placements prep"];
+      steps = [
+        "Draft and defend your master's thesis dissertation.",
+        "Write and submit a research paper to a recognized conference or journal.",
+        "Prepare for specialized R&D or technical leadership placement drives."
+      ];
+    }
+  } else if (isWorking) {
+    if (year === 1) {
+      have = ["Academic/Foundational knowledge"];
+      need = ["Production-grade codebases", "Corporate toolchains (Jira, CI/CD)", "Professional upskilling"];
+      steps = [
+        "Learn containerization (Docker) and basic CI/CD pipeline automation.",
+        "Understand company-specific reporting frameworks and ticketing tools.",
+        "Secure professional certifications aligned with your current job role."
+      ];
+    } else {
+      have = ["CI/CD familiarity", "Basic ticketing/workplace routine"];
+      need = ["System architecture ownership", "Cross-team communication", "Promotion / transition strategy"];
+      steps = [
+        "Lead a small feature development from design to deployment.",
+        "Mentor new hires or interns in your immediate team.",
+        "Compile a performance feedback log for promotion discussions."
+      ];
+    }
+  }
+
+  // Fallback to career roadmap skillGap if stage is not fully matched
+  if (need.length === 0 && roadmap?.skillGap) {
+    const skillGap = roadmap.skillGap;
+    have = skillGap.have || ["Foundational skills"];
+    need = skillGap.need?.map(n => n.skill) || [];
+    steps = skillGap.bridgingSteps || [];
+  }
+
+  return node(
+    `${degreeId}-year-${year}-skills`,
+    "Skills to Build",
+    "skill",
+    `Year ${year} Focus`,
+    `You currently have: ${have.join(", ")}.\nBridging steps:\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+    {
+      skills: need,
+      children: [],
+      isUserPath: true
+    }
+  );
+}
+
+function buildDiplomaYearSkillsNode(streamId, year, profile, roadmap, milestoneIds = []) {
+  // Extract dynamic skills from Gemini API generated skillGap
+  let dynamicNeed = [];
+  if (roadmap?.skillGap?.need && milestoneIds.length > 0) {
+    roadmap.skillGap.need.forEach(item => {
+      if (milestoneIds.includes(item.milestoneId)) {
+        dynamicNeed.push(item.skill);
+      }
+    });
+  }
+
+  // If we found dynamic skills matching this stage/milestone, prioritize them!
+  if (dynamicNeed.length > 0) {
+    const bridgingSteps = roadmap.skillGap.bridgingSteps || [
+      "Follow the milestone objectives sequentially.",
+      "Complete recommended coursework.",
+      "Build a project demonstrating these skills."
+    ];
+    
+    return node(
+      `${streamId}-y${year}-skills`,
+      "Skills to Build",
+      "skill",
+      `Year ${year} Focus`,
+      `You currently have: ${roadmap.skillGap.have?.join(", ") || "foundational skills"}.\nBridging steps:\n${bridgingSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      {
+        skills: dynamicNeed,
+        children: [],
+        isUserPath: true
+      }
+    );
+  }
+
+  let have = [];
+  let need = [];
+  let steps = [];
+
+  if (year === 1) {
+    have = ["Basic high school math/science"];
+    need = ["Engineering graphics", "Basic workshop safety", "Core calculations"];
+    steps = [
+      "Practice orthographic and isometric projections on sheet.",
+      "Understand workshop machine safeguards and tools.",
+      "Excel in applied sciences and basic mathematical operations."
+    ];
+  } else if (year === 2) {
+    have = ["Basic drawing & sciences"];
+    need = ["Core stream technicals", "Circuit/Kinematics simulator tools", "Lab testing routines"];
+    steps = [
+      "Learn stream-specific concepts (e.g. data structures or electronic circuits).",
+      "Run simulation software (e.g. Multisim, AutoCAD, or MATLAB basics).",
+      "Maintain a consistent lab journal with practical test cases."
+    ];
+  } else if (year === 3) {
+    have = ["Basic simulation & lab routines"];
+    need = ["Final year major project", "Competitive entrance (ECET)", "Resume optimization"];
+    steps = [
+      "Choose, prototype, and document a complete final year group project.",
+      "Solve previous years' ECET / lateral-entry aptitude questions.",
+      "Write a functional resume highlight your workshop and project skills."
+    ];
+  }
+
+  return node(
+    `${streamId}-y${year}-skills`,
+    "Skills to Build",
+    "skill",
+    `Year ${year} Focus`,
+    `You currently have: ${have.join(", ")}.\nBridging steps:\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+    {
+      skills: need,
       children: [],
       isUserPath: true
     }
@@ -479,154 +945,383 @@ function getPgBranchesForUg(degreeId, isUser, profile, roadmap, completedMilesto
 
 function buildDegreeYearPath(degreeId, degreeLabel, numYears, startYear, certNodes, internNodes, milestones, skillNode, careerGoalNode, isUser = false, profile = null, roadmap = null, completedMilestoneIds = null) {
   const yearNodes = [];
-  for (let y = startYear; y <= numYears + startYear - 1; y++) {
-    let label = "";
-    let detail = "";
-    
-    const isWorking = degreeId.includes("working");
-    const isPostgrad = degreeId.includes("pg");
-    
-    if (y === 1) {
-      if (isWorking) {
-        label = "1st Year: Skill Building & Certs";
-        detail = "Focus on intensive upskilling, mastering core tools, and earning professional certifications to build career credibility.";
-      } else if (isPostgrad) {
-        label = "1st Year: Specialization & Certs";
-        detail = "Focus on advanced academic coursework, research methodology, and completing specialized certifications.";
+  const isWorking = degreeId.includes("working");
+  const isPostgrad = degreeId.includes("pg");
+  const isUg = !isWorking && !isPostgrad;
+
+  if (isUg) {
+    // Generate Semester-based nodes for UG
+    const startSem = (startYear - 1) * 2 + 1;
+    const endSem = (startYear + numYears - 1) * 2;
+    const totalSems = endSem - startSem + 1;
+
+    for (let s = startSem; s <= endSem; s++) {
+      let label = "";
+      let detail = "";
+      let timeframe = `Semester ${s}`;
+      let sGoals = [];
+
+      if (s === 1) {
+        label = "Semester 1: Campus & Academic Adaptation";
+        detail = "Focus on adapting to college life, maintaining a high GPA in engineering physics/math, and joining student academic societies.";
+        sGoals = [
+          "Establish a solid college study schedule and daily learning habit",
+          "Maintain a GPA above 8.0 in your first semester core modules",
+          "Join at least one student technical club or interest group"
+        ];
+      } else if (s === 2) {
+        label = "Semester 2: Foundational Algorithms & Skills";
+        detail = "Focus on core programming fundamentals, data structures basics, and starting coding practice (e.g. on LeetCode/HackerRank).";
+        sGoals = [
+          "Master fundamental programming syntax and data structure concepts",
+          "Solve 30+ basic coding problems on HackerRank or LeetCode",
+          "Maintain high academic performance in university end-semester exams"
+        ];
+      } else if (s === 3) {
+        label = "Semester 3: Core Fields & Tool Mastery";
+        detail = "Deep dive into database management systems (DBMS), intermediate programming frameworks, and version control (Git).";
+        sGoals = [
+          "Build your first database-driven mini-project (SQL/NoSQL)",
+          "Learn Git version control and host your code repositories on GitHub",
+          "Earn a foundational certification in cloud computing or web basics"
+        ];
+      } else if (s === 4) {
+        label = "Semester 4: Full Stack Projects & Internships Search";
+        detail = "Build 2-3 full-stack or specialized projects for your portfolio and start applying for stipend-based internships.";
+        sGoals = [
+          "Build a comprehensive full-stack application or specialized domain project",
+          "Prepare your resume and optimize your LinkedIn profile for recruiters",
+          "Apply to at least 10 stipend-paying summer internships on Internshala/LinkedIn"
+        ];
+      } else if (s === 5) {
+        label = "Semester 5: Advanced Electives & Research";
+        detail = "Focus on advanced subjects like Operating Systems, Computer Networks, and starting a major group project.";
+        sGoals = [
+          "Master advanced system-level subjects and network protocols",
+          "Form a final year project group and finalize your project abstract",
+          "Secure and complete your first virtual/remote or local industry internship"
+        ];
+      } else if (s === 6) {
+        label = "Semester 6: Placement Preparation & Mocks";
+        detail = "Practice mock interviews, solve daily DSA problems, review computer science fundamentals, and prepare for campus drives.";
+        sGoals = [
+          "Solve 100+ DSA problems focusing on arrays, trees, and graphs",
+          "Conduct 5+ peer mock interviews and practice behavioral questions",
+          "Complete your major semester project prototype and host its live demo"
+        ];
+      } else if (s === 7) {
+        label = "Semester 7: Campus Placement Drives";
+        detail = "Actively participate in college placement drives, attend aptitude rounds, and crack technical interview cycles.";
+        sGoals = [
+          "Submit applications to 15+ campus placement opportunities",
+          "Crack the coding/aptitude assessment rounds for target companies",
+          "Excel in technical and HR face-to-face interview cycles"
+        ];
+      } else if (s === 8) {
+        label = "Semester 8: Graduation & Professional Onboarding";
+        detail = "Successfully complete final semester university requirements, defend your major project, and prepare for corporate onboarding.";
+        sGoals = [
+          "Complete and defend your final-year major engineering project",
+          "Clear all university credit requirements to secure your degree",
+          "Complete pre-onboarding training modules sent by your hiring employer"
+        ];
       } else {
-        label = "1st Year: Academics & Certifications";
-        detail = "Focus on college coursework, maintaining a high GPA, and building foundations through certification courses.";
+        label = `Semester ${s}: Advanced Practice`;
+        detail = "Complete final practical assignments, licensing, or residency placements.";
+        sGoals = ["Fulfill graduation credits and prepare final reports."];
       }
-    } else if (y === 2) {
-      if (isWorking) {
-        label = "2nd Year: Real-world Projects & Transition";
-        detail = "Build a robust practical portfolio, apply for transition roles, and complete real-world projects or freelancing.";
-      } else if (isPostgrad) {
-        label = "2nd Year: Thesis & Industry Exposure";
-        detail = "Focus on your master's thesis, project work, and secure a high-impact internship or placement preparation.";
-      } else {
-        label = "2nd Year: Core & Internships";
-        detail = "Deepen understanding of core subjects, build mini-projects, and secure a summer internship.";
-      }
-    } else if (y === 3) {
-      label = "3rd Year: Advanced Topics";
-      detail = "Work on advanced electives, start capstone/major project research, and prepare for exams or placements.";
-    } else if (y === 4) {
-      label = "4th Year: Placements & Graduation";
-      detail = "Focus on final-year capstone project, attend placement drives, and prepare to transition to your target goal.";
-    } else {
-      label = `${y}th Year: Advanced Practice`;
-      detail = "Complete final practical assignments, licensing, or residency placements.";
+
+      const sNode = node(
+        `${degreeId}-sem-${s}`,
+        label,
+        "degree",
+        timeframe,
+        detail,
+        { isUserPath: isUser, stageGoals: sGoals }
+      );
+      yearNodes.push(sNode);
     }
 
-    const yNode = node(
-      `${degreeId}-year-${y}`,
-      label,
-      "degree",
-      `Year ${y}`,
-      detail,
-      { isUserPath: isUser }
-    );
-    yearNodes.push(yNode);
-  }
+    // Distribute milestones across semester nodes
+    milestones.forEach((msNode, idx) => {
+      const stage = getMilestoneStage(msNode.timeframe, msNode.fullTitle || msNode.label, msNode.detail);
+      let targetSem = startSem;
+      if (stage === "college-1") targetSem = startSem + 1; // Map to Semester 2
+      else if (stage === "college-2") targetSem = startSem + 3; // Map to Semester 4
+      else if (stage === "college-3") targetSem = startSem + 5; // Map to Semester 6
+      else if (stage === "college-4") targetSem = startSem + 7; // Map to Semester 8
+      else {
+        // Fallback to timeframe parsing
+        const tf = (msNode.timeframe || "").toLowerCase();
+        if (tf.includes("month")) {
+          const m = parseInt(tf.replace(/[^0-9]/g, ""), 10);
+          if (!isNaN(m)) {
+            if (m <= 6) targetSem = startSem;
+            else if (m <= 12) targetSem = startSem + 1;
+            else if (m <= 18) targetSem = startSem + 2;
+            else if (m <= 24) targetSem = startSem + 3;
+            else if (m <= 30) targetSem = startSem + 4;
+            else if (m <= 36) targetSem = startSem + 5;
+            else targetSem = startSem + 7;
+          }
+        } else {
+          const offset = Math.min(idx * 2 + 1, totalSems - 1);
+          targetSem = startSem + offset;
+        }
+      }
 
-  // Distribute milestones across year nodes
-  milestones.forEach((msNode, idx) => {
-    const stage = getMilestoneStage(msNode.timeframe, msNode.fullTitle || msNode.label, msNode.detail);
-    let targetYear = startYear;
-    if (stage === "college-1") targetYear = startYear;
-    else if (stage === "college-2") targetYear = Math.min(startYear + 1, startYear + numYears - 1);
-    else if (stage === "college-3") targetYear = Math.min(startYear + 2, startYear + numYears - 1);
-    else if (stage === "college-4") targetYear = startYear + numYears - 1;
-    else {
-      // Fallback to timeframe parsing
-      const tf = (msNode.timeframe || "").toLowerCase();
-      if (tf.includes("month")) {
-        const m = parseInt(tf.replace(/[^0-9]/g, ""), 10);
-        if (!isNaN(m)) {
-          if (m <= 12) targetYear = startYear;
-          else if (m <= 24) targetYear = startYear + 1;
-          else if (m <= 36) targetYear = Math.min(startYear + 2, startYear + numYears - 1);
-          else targetYear = startYear + numYears - 1;
+      const sNode = yearNodes.find(n => n.id === `${degreeId}-sem-${targetSem}`);
+      if (sNode) {
+        sNode.children.push(msNode);
+      }
+    });
+
+    // Chain Semester Nodes
+    for (let i = 0; i < yearNodes.length - 1; i++) {
+      yearNodes[i].children.push(yearNodes[i + 1]);
+    }
+
+    // Attach postgraduate/working progression nodes to the final semester node
+    const finalSemNode = yearNodes[yearNodes.length - 1];
+    if (isUg && profile && roadmap && completedMilestoneIds) {
+      const jobNode = node(
+        `${degreeId}-post-job`,
+        "Job Placement / Junior Role",
+        "path",
+        "Post-College",
+        "Enter the job market in an entry-level junior role to gain industry experience.",
+        { isUserPath: isUser }
+      );
+      jobNode.children.push(careerGoalNode);
+
+      const pgBranches = getPgBranchesForUg(degreeId, isUser, profile, roadmap, completedMilestoneIds);
+      const mastersNode = node(
+        `${degreeId}-post-masters`,
+        "Higher Studies / Masters",
+        "path",
+        "Post-College",
+        "Pursue a postgraduate degree (M.Tech, MBA, MS, etc.) to specialize further.",
+        { isUserPath: isUser, children: pgBranches }
+      );
+
+      finalSemNode.children.push(jobNode, mastersNode);
+    } else {
+      finalSemNode.children.push(careerGoalNode);
+    }
+
+    // Attach Certifications to the Semester 2 node
+    if (certNodes && certNodes.length > 0) {
+      const sem2Node = yearNodes.find(n => n.id === `${degreeId}-sem-${startSem + 1}`) || yearNodes[0];
+      const certCluster = node(
+        `${degreeId}-cert-cluster`,
+        "Certifications",
+        "cert",
+        "Ongoing",
+        "Professional certifications to build credibility in your field.",
+        { children: certNodes, isUserPath: isUser }
+      );
+      sem2Node.children.push(certCluster);
+    }
+
+    // Attach Internships to the Semester 4 node
+    if (internNodes && internNodes.length > 0) {
+      const sem4Node = yearNodes.find(n => n.id === `${degreeId}-sem-${startSem + 3}`) || yearNodes[0];
+      const internCluster = node(
+        `${degreeId}-intern-cluster`,
+        "Internships",
+        "internship",
+        "Year 2-3",
+        "Real-world work experience opportunities.",
+        { children: internNodes, isUserPath: isUser }
+      );
+      sem4Node.children.push(internCluster);
+    }
+
+    // Attach dynamic year-specific skills nodes LAST, shifted one level up
+    if (isUser && profile && roadmap) {
+      yearNodes.forEach((sNode, idx) => {
+        // We only generate skills nodes for even semesters (Semester 2, 4, 6, 8) which represent the end of Year 1, 2, 3, 4
+        const semNum = parseInt(sNode.id.split("-").pop(), 10);
+        if (semNum % 2 === 0) {
+          const yearNum = Math.floor((semNum - 1) / 2) + 1;
+          
+          // Collect milestones from both semesters of this year for the skills check
+          const prevSemNode = yearNodes.find(n => n.id === `${degreeId}-sem-${semNum - 1}`);
+          const milestoneIds = [
+            ...(prevSemNode ? prevSemNode.children : []),
+            ...sNode.children
+          ].filter(c => c.type === "milestone" || c.type === "goal").map(c => c.id);
+
+          const yrSkills = buildYearSpecificSkillsNode(degreeId, yearNum, profile, roadmap, milestoneIds);
+          if (yrSkills) {
+            if (semNum === startSem + 1) {
+              // For Year 1 (Semester 2), store it on the first semester node (Semester 1) so it gets attached to the Degree node
+              yearNodes[0].yr1Skills = yrSkills;
+            } else {
+              // For Year > 1, attach it to the previous semester node's children list so it renders alongside the next semester
+              const parentSemIdx = idx - 1; // Semester 2 is the parent of Semester 3, etc.
+              if (parentSemIdx >= 0) {
+                yearNodes[parentSemIdx].children.push(yrSkills);
+              }
+            }
+          }
+        }
+      });
+    }
+
+    return yearNodes[0];
+  } else {
+    for (let y = startYear; y <= numYears + startYear - 1; y++) {
+      let label = "";
+      let detail = "";
+      let timeframe = `Year ${y}`;
+      
+      if (y === 1) {
+        if (isWorking) {
+          label = "1st Year: Skill Building & Certs";
+          detail = "Focus on intensive upskilling, mastering core tools, and earning professional certifications to build career credibility.";
+        } else if (isPostgrad) {
+          label = "1st Year: Specialization & Certs";
+          detail = "Focus on advanced academic coursework, research methodology, and completing specialized certifications.";
+        }
+      } else if (y === 2) {
+        if (isWorking) {
+          label = "2nd Year: Real-world Projects & Transition";
+          detail = "Build a robust practical portfolio, apply for transition roles, and complete real-world projects or freelancing.";
+        } else if (isPostgrad) {
+          label = "2nd Year: Thesis & Industry Exposure";
+          detail = "Focus on your master's thesis, project work, and secure a high-impact internship or placement preparation.";
         }
       } else {
-        const offset = Math.min(idx, numYears - 1);
-        targetYear = startYear + offset;
+        label = `${y}th Year: Advanced Practice`;
+        detail = "Complete final practical assignments, licensing, or residency placements.";
       }
+
+      const yNode = node(
+        `${degreeId}-year-${y}`,
+        label,
+        "degree",
+        timeframe,
+        detail,
+        { isUserPath: isUser }
+      );
+      
+      yearNodes.push(yNode);
     }
-    
-    const yNode = yearNodes.find(n => n.id === `${degreeId}-year-${targetYear}`);
-    if (yNode) {
-      yNode.children.push(msNode);
+
+    // Distribute milestones across year nodes
+    milestones.forEach((msNode, idx) => {
+      const stage = getMilestoneStage(msNode.timeframe, msNode.fullTitle || msNode.label, msNode.detail);
+      let targetYear = startYear;
+      if (stage === "college-1") targetYear = startYear;
+      else if (stage === "college-2") targetYear = Math.min(startYear + 1, startYear + numYears - 1);
+      else if (stage === "college-3") targetYear = Math.min(startYear + 2, startYear + numYears - 1);
+      else if (stage === "college-4") targetYear = startYear + numYears - 1;
+      else {
+        // Fallback to timeframe parsing
+        const tf = (msNode.timeframe || "").toLowerCase();
+        if (tf.includes("month")) {
+          const m = parseInt(tf.replace(/[^0-9]/g, ""), 10);
+          if (!isNaN(m)) {
+            if (m <= 12) targetYear = startYear;
+            else if (m <= 24) targetYear = startYear + 1;
+            else if (m <= 36) targetYear = Math.min(startYear + 2, startYear + numYears - 1);
+            else targetYear = startYear + numYears - 1;
+          }
+        } else {
+          const offset = Math.min(idx, numYears - 1);
+          targetYear = startYear + offset;
+        }
+      }
+      
+      const yNode = yearNodes.find(n => n.id === `${degreeId}-year-${targetYear}`);
+      if (yNode) {
+        yNode.children.push(msNode);
+      }
+    });
+
+    // Chain Year Nodes
+    for (let i = 0; i < yearNodes.length - 1; i++) {
+      yearNodes[i].children.push(yearNodes[i + 1]);
     }
-  });
 
-  // Attach Certifications to the first year node
-  if (certNodes && certNodes.length > 0) {
-    const firstYearNode = yearNodes[0];
-    const certCluster = node(
-      `${degreeId}-cert-cluster`,
-      "Certifications",
-      "cert",
-      "Ongoing",
-      "Professional certifications to build credibility in your field.",
-      { children: certNodes, isUserPath: isUser }
-    );
-    firstYearNode.children.push(certCluster);
+    // Attach postgraduate/working progression nodes to the final year node
+    const finalYearNode = yearNodes[yearNodes.length - 1];
+    if (isUg && profile && roadmap && completedMilestoneIds) {
+      const jobNode = node(
+        `${degreeId}-post-job`,
+        "Job Placement / Junior Role",
+        "path",
+        "Post-College",
+        "Enter the job market in an entry-level junior role to gain industry experience.",
+        { isUserPath: isUser }
+      );
+      jobNode.children.push(careerGoalNode);
+
+      const pgBranches = getPgBranchesForUg(degreeId, isUser, profile, roadmap, completedMilestoneIds);
+      const mastersNode = node(
+        `${degreeId}-post-masters`,
+        "Higher Studies / Masters",
+        "path",
+        "Post-College",
+        "Pursue a postgraduate degree (M.Tech, MBA, MS, etc.) to specialize further.",
+        { isUserPath: isUser, children: pgBranches }
+      );
+
+      finalYearNode.children.push(jobNode, mastersNode);
+    } else {
+      finalYearNode.children.push(careerGoalNode);
+    }
+
+    // Attach Certifications to the first year node
+    if (certNodes && certNodes.length > 0) {
+      const firstYearNode = yearNodes[0];
+      const certCluster = node(
+        `${degreeId}-cert-cluster`,
+        "Certifications",
+        "cert",
+        "Ongoing",
+        "Professional certifications to build credibility in your field.",
+        { children: certNodes, isUserPath: isUser }
+      );
+      firstYearNode.children.push(certCluster);
+    }
+
+    // Attach Internships to the second year node
+    if (internNodes && internNodes.length > 0) {
+      const secondYearNode = yearNodes.length > 1 ? yearNodes[1] : yearNodes[0];
+      const internCluster = node(
+        `${degreeId}-intern-cluster`,
+        "Internships",
+        "internship",
+        "Year 2-3",
+        "Real-world work experience opportunities.",
+        { children: internNodes, isUserPath: isUser }
+      );
+      secondYearNode.children.push(internCluster);
+    }
+
+    // Attach dynamic year-specific skills nodes LAST, shifted one level up
+    if (isUser && profile && roadmap) {
+      yearNodes.forEach((yNode, idx) => {
+        const yearNum = parseInt(yNode.id.split("-").pop(), 10);
+        const milestoneIds = yNode.children
+          .filter(c => c.type === "milestone" || c.type === "goal")
+          .map(c => c.id);
+        
+        const yrSkills = buildYearSpecificSkillsNode(degreeId, yearNum - startYear + 1, profile, roadmap, milestoneIds);
+        if (yrSkills) {
+          if (idx === 0) {
+            yNode.yr1Skills = yrSkills;
+          } else {
+            yearNodes[idx - 1].children.push(yrSkills);
+          }
+        }
+      });
+    }
+
+    return yearNodes[0];
   }
-
-  // Attach Internships to the second year node
-  if (internNodes && internNodes.length > 0) {
-    const secondYearNode = yearNodes.length > 1 ? yearNodes[1] : yearNodes[0];
-    const internCluster = node(
-      `${degreeId}-intern-cluster`,
-      "Internships",
-      "internship",
-      "Year 2-3",
-      "Real-world work experience opportunities.",
-      { children: internNodes, isUserPath: isUser }
-    );
-    secondYearNode.children.push(internCluster);
-  }
-
-  // Attach Skill Gap to the first year node
-  if (skillNode) {
-    yearNodes[0].children.push(skillNode);
-  }
-
-  // Chain Year Nodes
-  for (let i = 0; i < yearNodes.length - 1; i++) {
-    yearNodes[i].children.push(yearNodes[i + 1]);
-  }
-  
-  const isUg = !degreeId.includes("pg") && !degreeId.includes("working");
-  if (isUg && profile && roadmap && completedMilestoneIds) {
-    const jobNode = node(
-      `${degreeId}-post-job`,
-      "Job Placement / Junior Role",
-      "path",
-      "Post-College",
-      "Enter the job market in an entry-level junior role to gain industry experience.",
-      { isUserPath: isUser }
-    );
-    jobNode.children.push(careerGoalNode);
-
-    const pgBranches = getPgBranchesForUg(degreeId, isUser, profile, roadmap, completedMilestoneIds);
-    const mastersNode = node(
-      `${degreeId}-post-masters`,
-      "Higher Studies / Masters",
-      "path",
-      "Post-College",
-      "Pursue a postgraduate degree (M.Tech, MBA, MS, etc.) to specialize further.",
-      { isUserPath: isUser, children: pgBranches }
-    );
-
-    yearNodes[yearNodes.length - 1].children.push(jobNode, mastersNode);
-  } else {
-    yearNodes[yearNodes.length - 1].children.push(careerGoalNode);
-  }
-
-  return yearNodes[0];
 }
 
 function buildTemplateBranch(degreeId, degreeLabel, fieldType, profile = null, roadmap = null, completedMilestoneIds = null) {
@@ -687,6 +1382,11 @@ function buildTemplateBranch(degreeId, degreeLabel, fieldType, profile = null, r
     completedMilestoneIds
   );
 
+  const degreeChildren = [yearPathStartNode];
+  if (yearPathStartNode.yr1Skills) {
+    degreeChildren.push(yearPathStartNode.yr1Skills);
+  }
+
   return node(
     degreeId,
     degreeLabel,
@@ -695,7 +1395,7 @@ function buildTemplateBranch(degreeId, degreeLabel, fieldType, profile = null, r
     `Degree: ${degreeLabel}`,
     {
       isUserPath: false,
-      children: [yearPathStartNode]
+      children: degreeChildren
     }
   );
 }
@@ -782,6 +1482,11 @@ function buildUserDegreeBranch(degreeId, degreeLabel, profile, roadmap, complete
     completedMilestoneIds
   );
 
+  const degreeChildren = [yearPathStartNode];
+  if (yearPathStartNode.yr1Skills) {
+    degreeChildren.push(yearPathStartNode.yr1Skills);
+  }
+
   return node(
     degreeId,
     degreeLabel,
@@ -790,7 +1495,7 @@ function buildUserDegreeBranch(degreeId, degreeLabel, profile, roadmap, complete
     `Degree: ${degreeLabel}`,
     {
       isUserPath: true,
-      children: [yearPathStartNode]
+      children: degreeChildren
     }
   );
 }
@@ -830,7 +1535,54 @@ function getDegreeBranch(degreeId, degreeLabel, profile, roadmap, completedMiles
   }
 }
 
-function buildCbseInterStreamSeq(streamId, streamLabel, detail, degreeOptions, school11Ms = [], school12Ms = [], skillNode = null, isUser = false) {
+function buildEntranceCheckpointNode(streamId, degreeOptions, profile) {
+  const financialTier = profile?.financialTier || "MEDIUM";
+  
+  let examName = "JEE Main / State Engineering Entrance";
+  const lowId = streamId.toLowerCase();
+  if (lowId.includes("pcb") || lowId.includes("bipc")) {
+    examName = "NEET / Biology Entrance";
+  } else if (lowId.includes("comm") || lowId.includes("cec") || lowId.includes("hec") || lowId.includes("hum") || lowId.includes("arts")) {
+    examName = "CUET / CLAT / Commerce Entrance";
+  } else if (lowId.includes("diploma") || lowId.includes("polytechnic")) {
+    examName = "ECET / Lateral Entry Exam";
+  }
+  
+  const planADetail = "Plan A: Secure admission in Top-Tier institutions (IITs, NITs, Central Univs). Focus on clearing competitive cutoff targets.";
+  const planBDetail = `Plan B: Secure seat in local Tier 2/3 colleges, combined with aggressive upskilling (10-12 hrs/week) on self-study courses. Optimized for ${financialTier} budget tier.`;
+  
+  const planANode = node(
+    `${streamId}-entrance-plana`,
+    "Plan A (Top Tier College)",
+    "milestone",
+    "Entrance",
+    planADetail,
+    { children: degreeOptions, isUserPath: true }
+  );
+
+  const planBNode = node(
+    `${streamId}-entrance-planb`,
+    "Plan B (Tier 2/3 + Upskill)",
+    "milestone",
+    "Entrance",
+    planBDetail,
+    { children: degreeOptions, isUserPath: true }
+  );
+
+  return node(
+    `${streamId}-entrance-root`,
+    `Entrance: ${examName}`,
+    "decision",
+    "Checkpoint",
+    `Decide between Plan A (Top-Tier) and Plan B (Tier 2/3 + Portfolio) depending on cutoffs and your ${financialTier} budget constraints.`,
+    {
+      children: [planANode, planBNode],
+      isUserPath: true
+    }
+  );
+}
+
+function buildCbseInterStreamSeq(streamId, streamLabel, detail, degreeOptions, school11Ms = [], school12Ms = [], skillNode = null, isUser = false, profile = null, roadmap = null) {
   let g11Detail = "Focus on 11th grade studies, while doing some logical problems (ongoing).";
   let g12Detail = "12th grade, focus on board exams, while doing some tougher problems.";
   
@@ -894,18 +1646,24 @@ function buildCbseInterStreamSeq(streamId, streamLabel, detail, degreeOptions, s
     ];
   }
 
+  const entranceNode = buildEntranceCheckpointNode(streamId, degreeOptions, profile);
+
+  const g12Skills = roadmap ? buildSkillsNode(`${streamId}-12th`, roadmap, profile, school12Ms.map(m => m.id)) : null;
+  const g12Children = [entranceNode, ...school12Ms];
+
   const g12Node = node(
     `${streamId}-12th`,
     "12th Grade: Boards Focus",
     "stream",
     "Grade 12",
     g12Detail,
-    { children: [...degreeOptions, ...school12Ms], stageGoals: g12Goals, isUserPath: isUser }
+    { children: g12Children, stageGoals: g12Goals, isUserPath: isUser }
   );
 
+  const g11Skills = roadmap ? buildSkillsNode(`${streamId}-11th`, roadmap, profile, school11Ms.map(m => m.id)) : null;
   const g11Children = [g12Node, ...school11Ms];
-  if (skillNode) {
-    g11Children.push(skillNode);
+  if (g12Skills) {
+    g11Children.push(g12Skills);
   }
 
   const g11Node = node(
@@ -917,17 +1675,22 @@ function buildCbseInterStreamSeq(streamId, streamLabel, detail, degreeOptions, s
     { children: g11Children, stageGoals: g11Goals, isUserPath: isUser }
   );
 
+  const streamChildren = [g11Node];
+  if (g11Skills) {
+    streamChildren.push(g11Skills);
+  }
+
   return node(
     streamId,
     streamLabel,
     "stream",
     "Grade 11-12",
     detail,
-    { children: [g11Node], isUserPath: isUser }
+    { children: streamChildren, isUserPath: isUser }
   );
 }
 
-function buildDiplomaYearSeq(streamId, streamLabel, detail, degreeOptions, dip1Ms = [], dip2Ms = [], dip3Ms = [], skillNode = null, isUser = false) {
+function buildDiplomaYearSeq(streamId, streamLabel, detail, degreeOptions, dip1Ms = [], dip2Ms = [], dip3Ms = [], skillNode = null, isUser = false, profile = null, roadmap = null) {
   let y1Detail = "Focus on basic engineering sciences, math, and introductory engineering graphics.";
   let y2Detail = "Focus on core electrical, mechanical, or civil engineering principles and lab exercises.";
   let y3Detail = "Focus on advanced specialization coursework, workshop practice, and final project work.";
@@ -990,7 +1753,11 @@ function buildDiplomaYearSeq(streamId, streamLabel, detail, degreeOptions, dip1M
     ];
   }
 
-  const y3Children = [...degreeOptions, ...dip3Ms];
+  const entranceNode = buildEntranceCheckpointNode(streamId, degreeOptions, profile);
+
+  const y3Skills = buildDiplomaYearSkillsNode(streamId, 3, profile, roadmap, dip3Ms.map(m => m.id));
+  const y3Children = [entranceNode, ...dip3Ms];
+
   const y3 = node(
     `${streamId}-y3`,
     "Diploma 3rd Year: Projects & Labs",
@@ -1000,7 +1767,11 @@ function buildDiplomaYearSeq(streamId, streamLabel, detail, degreeOptions, dip1M
     { children: y3Children, stageGoals: y3Goals, isUserPath: isUser }
   );
 
+  const y2Skills = buildDiplomaYearSkillsNode(streamId, 2, profile, roadmap, dip2Ms.map(m => m.id));
   const y2Children = [y3, ...dip2Ms];
+  if (y3Skills) {
+    y2Children.push(y3Skills);
+  }
   const y2 = node(
     `${streamId}-y2`,
     "Diploma 2nd Year: Core Technicals",
@@ -1010,9 +1781,10 @@ function buildDiplomaYearSeq(streamId, streamLabel, detail, degreeOptions, dip1M
     { children: y2Children, stageGoals: y2Goals, isUserPath: isUser }
   );
 
+  const y1Skills = buildDiplomaYearSkillsNode(streamId, 1, profile, roadmap, dip1Ms.map(m => m.id));
   const y1Children = [y2, ...dip1Ms];
-  if (skillNode) {
-    y1Children.push(skillNode);
+  if (y2Skills) {
+    y1Children.push(y2Skills);
   }
   const y1 = node(
     `${streamId}-y1`,
@@ -1023,13 +1795,18 @@ function buildDiplomaYearSeq(streamId, streamLabel, detail, degreeOptions, dip1M
     { children: y1Children, stageGoals: y1Goals, isUserPath: isUser }
   );
 
+  const streamChildren = [y1];
+  if (y1Skills) {
+    streamChildren.push(y1Skills);
+  }
+
   return node(
     streamId,
     streamLabel,
     "stream",
     "Years 1-3",
     detail,
-    { children: [y1], isUserPath: isUser }
+    { children: streamChildren, isUserPath: isUser }
   );
 }
 
@@ -1192,6 +1969,11 @@ function buildUserPgBranch(degreeId, degreeLabel, profile, roadmap, completedMil
     true
   );
 
+  const degreeChildren = [yearPathStartNode];
+  if (yearPathStartNode.yr1Skills) {
+    degreeChildren.push(yearPathStartNode.yr1Skills);
+  }
+
   return node(
     degreeId,
     degreeLabel,
@@ -1200,7 +1982,7 @@ function buildUserPgBranch(degreeId, degreeLabel, profile, roadmap, completedMil
     `Degree: ${degreeLabel}`,
     {
       isUserPath: true,
-      children: [yearPathStartNode]
+      children: degreeChildren
     }
   );
 }
@@ -1244,6 +2026,11 @@ function buildTemplatePgBranch(degreeId, degreeLabel, fieldType) {
     false
   );
 
+  const degreeChildren = [yearPathStartNode];
+  if (yearPathStartNode.yr1Skills) {
+    degreeChildren.push(yearPathStartNode.yr1Skills);
+  }
+
   return node(
     degreeId,
     degreeLabel,
@@ -1252,7 +2039,7 @@ function buildTemplatePgBranch(degreeId, degreeLabel, fieldType) {
     `Degree: ${degreeLabel}`,
     {
       isUserPath: false,
-      children: [yearPathStartNode]
+      children: degreeChildren
     }
   );
 }
@@ -1353,6 +2140,11 @@ function buildWorkingBranch(profile, roadmap, completedMilestoneIds) {
     true
   );
 
+  const workingChildren = [yearPathStartNode];
+  if (yearPathStartNode.yr1Skills) {
+    workingChildren.push(yearPathStartNode.yr1Skills);
+  }
+
   return node(
     "working-root-path",
     "Career Pathway",
@@ -1361,7 +2153,7 @@ function buildWorkingBranch(profile, roadmap, completedMilestoneIds) {
     "Transitioning from current experience to target role",
     {
       isUserPath: true,
-      children: [yearPathStartNode]
+      children: workingChildren
     }
   );
 }
@@ -1546,7 +2338,7 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
 
   // Determine if user is in CLASS_11_12 and we need to attach the skillsNode to Grade 11
   const isSchool11_12 = userStage === "CLASS_11_12";
-  const school11_12SkillsNode = isSchool11_12 ? buildSkillsNode("school-11", roadmap) : null;
+  const school11_12SkillsNode = isSchool11_12 ? buildSkillsNode("school-11", roadmap, profile, categorized.school11.map(m => m.id)) : null;
 
   const cbseChildren = [];
   const interChildren = [];
@@ -1592,7 +2384,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isPCMUser ? categorized.school11 : [],
         isPCMUser ? categorized.school12 : [],
         isPCMUser ? school11_12SkillsNode : null,
-        isPCMUser
+        isPCMUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1607,7 +2401,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isPCBUser ? categorized.school11 : [],
         isPCBUser ? categorized.school12 : [],
         isPCBUser ? school11_12SkillsNode : null,
-        isPCBUser
+        isPCBUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1622,7 +2418,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isCommUser ? categorized.school11 : [],
         isCommUser ? categorized.school12 : [],
         isCommUser ? school11_12SkillsNode : null,
-        isCommUser
+        isCommUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1637,7 +2435,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isHumUser ? categorized.school11 : [],
         isHumUser ? categorized.school12 : [],
         isHumUser ? school11_12SkillsNode : null,
-        isHumUser
+        isHumUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1682,7 +2482,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isMPCUser ? categorized.school11 : [],
         isMPCUser ? categorized.school12 : [],
         isMPCUser ? school11_12SkillsNode : null,
-        isMPCUser
+        isMPCUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1697,7 +2499,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isBiPCUser ? categorized.school11 : [],
         isBiPCUser ? categorized.school12 : [],
         isBiPCUser ? school11_12SkillsNode : null,
-        isBiPCUser
+        isBiPCUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1712,7 +2516,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isCECUser ? categorized.school11 : [],
         isCECUser ? categorized.school12 : [],
         isCECUser ? school11_12SkillsNode : null,
-        isCECUser
+        isCECUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1727,7 +2533,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isHECUser ? categorized.school11 : [],
         isHECUser ? categorized.school12 : [],
         isHECUser ? school11_12SkillsNode : null,
-        isHECUser
+        isHECUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1752,7 +2560,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isDipCSEUser ? categorized.dip2 : [],
         isDipCSEUser ? categorized.dip3 : [],
         isDipCSEUser ? school11_12SkillsNode : null,
-        isDipCSEUser
+        isDipCSEUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1768,7 +2578,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isDipECEUser ? categorized.dip2 : [],
         isDipECEUser ? categorized.dip3 : [],
         isDipECEUser ? school11_12SkillsNode : null,
-        isDipECEUser
+        isDipECEUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1784,7 +2596,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isDipMechUser ? categorized.dip2 : [],
         isDipMechUser ? categorized.dip3 : [],
         isDipMechUser ? school11_12SkillsNode : null,
-        isDipMechUser
+        isDipMechUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1800,7 +2614,9 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
         isDipCivilUser ? categorized.dip2 : [],
         isDipCivilUser ? categorized.dip3 : [],
         isDipCivilUser ? school11_12SkillsNode : null,
-        isDipCivilUser
+        isDipCivilUser,
+        profile,
+        roadmap
       )
     );
   }
@@ -1818,6 +2634,10 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
   if (diplomaChildren.length > 0) {
     diplomaPath.children = diplomaChildren;
     rootChildren.push(diplomaPath);
+  }
+
+  if (school11_12SkillsNode) {
+    rootChildren.push(school11_12SkillsNode);
   }
 
   // Fallback: If everything was filtered out due to custom naming, show all field options
@@ -1840,7 +2660,49 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
   // Adjust tree layout dynamically based on the stage: CLASS_7_8 or CLASS_9_10
   let finalRootChildren = rootChildren;
 
+  const isChef = careerGoal.toLowerCase().includes("chef") ||
+                 careerGoal.toLowerCase().includes("culinary") ||
+                 careerGoal.toLowerCase().includes("cook") ||
+                 careerGoal.toLowerCase().includes("hotel") ||
+                 careerGoal.toLowerCase().includes("bakery") ||
+                 careerGoal.toLowerCase().includes("food") ||
+                 careerGoal.toLowerCase().includes("restaurant");
+
+  const g9Detail = isChef 
+    ? "Focus on 9th grade studies, explore recipe structures and kitchen basics."
+    : "Focus on 9th grade studies, explore science & coding basics.";
+
+  const g9Goals = isChef
+    ? [
+        "Explore basic baking chemistry or culinary ratios at home",
+        "Excel in school-level sciences (understanding heat and states of matter)",
+        "Participate in home cooking, flavor experiments, or food-themed science projects"
+      ]
+    : [
+        "Explore introductory coding (basic Python or Scratch) or visual design",
+        "Excel in school-level sciences and mathematics",
+        "Participate in science fairs, debates, or co-curricular clubs"
+      ];
+
+  const g8Detail = isChef
+    ? "Focus on 8th grade studies, learn measurement units and flavor basics."
+    : "Focus on 8th grade studies, build logical thinking & math basics (ongoing).";
+
+  const g8Goals = isChef
+    ? [
+        "Master measurements and simple kitchen calculations (volume, mass)",
+        "Practice flavor pairing ideas and simple ingredient combinations",
+        "Maintain a consistent daily study routine and help in home cooking activities"
+      ]
+    : [
+        "Master basic algebra, geometry, and foundational science concepts",
+        "Practice logical reasoning puzzles to build analytical thinking",
+        "Maintain a consistent daily study routine (1-2 hours)"
+      ];
+
   if (userStage === "CLASS_7_8") {
+    const school10SkillsNode = buildSkillsNode("school-10", roadmap, profile, categorized.school10.map(m => m.id));
+    const grade10Children = [...rootChildren, ...categorized.school10];
     const grade10Node = node(
       "path-10th-grade",
       "10th Grade Boards & Decision",
@@ -1849,7 +2711,7 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
       "Focus on 10th board exams and evaluate stream preferences (Science, Commerce, Arts, or Diploma).",
       { 
         isUserPath: true, 
-        children: [...rootChildren, ...categorized.school10],
+        children: grade10Children,
         stageGoals: [
           "Score a high percentage in 10th Board Exams to maximize future choices",
           "Research different stream options (Science PCM/PCB, Commerce, Humanities)",
@@ -1858,47 +2720,49 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
       }
     );
     
+    const school9SkillsNode = buildSkillsNode("school-9", roadmap, profile, categorized.school9.map(m => m.id));
+    const grade9Children = [grade10Node, ...categorized.school9];
+    if (school10SkillsNode) {
+      grade9Children.push(school10SkillsNode);
+    }
     const grade9Node = node(
       "path-9th-grade",
       "9th Grade Exploration",
       "path",
       "Grade 9",
-      "Focus on 9th grade studies, explore science & coding basics.",
+      g9Detail,
       { 
         isUserPath: true, 
-        children: [grade10Node, ...categorized.school9],
-        stageGoals: [
-          "Explore introductory coding (basic Python or Scratch) or visual design",
-          "Excel in school-level sciences and mathematics",
-          "Participate in science fairs, debates, or co-curricular clubs"
-        ]
+        children: grade9Children,
+        stageGoals: g9Goals
       }
     );
     
+    const school8SkillsNode = buildSkillsNode("school-8", roadmap, profile, categorized.school8.map(m => m.id));
     const grade8Children = [grade9Node, ...categorized.school8];
-    const school8SkillsNode = buildSkillsNode("school-8", roadmap);
-    if (school8SkillsNode) {
-      grade8Children.push(school8SkillsNode);
+    if (school9SkillsNode) {
+      grade8Children.push(school9SkillsNode);
     }
     const grade8Node = node(
       "path-8th-grade",
       "8th Grade Foundations",
       "path",
       "Grade 8",
-      "Focus on 8th grade studies, build logical thinking & math basics (ongoing).",
+      g8Detail,
       { 
         isUserPath: true, 
         children: grade8Children,
-        stageGoals: [
-          "Master basic algebra, geometry, and foundational science concepts",
-          "Practice logical reasoning puzzles to build analytical thinking",
-          "Maintain a consistent daily study routine (1-2 hours)"
-        ]
+        stageGoals: g8Goals
       }
     );
     
     finalRootChildren = [grade8Node];
+    if (school8SkillsNode) {
+      finalRootChildren.push(school8SkillsNode);
+    }
   } else if (userStage === "CLASS_9_10") {
+    const school10SkillsNode = buildSkillsNode("school-10", roadmap, profile, categorized.school10.map(m => m.id));
+    const grade10Children = [...rootChildren, ...categorized.school10];
     const grade10Node = node(
       "path-10th-grade",
       "10th Grade Boards & Decision",
@@ -1907,7 +2771,7 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
       "Focus on 10th board exams and evaluate stream preferences (Science, Commerce, Arts, or Diploma).",
       { 
         isUserPath: true, 
-        children: [...rootChildren, ...categorized.school10],
+        children: grade10Children,
         stageGoals: [
           "Score a high percentage in 10th Board Exams to maximize future choices",
           "Research different stream options (Science PCM/PCB, Commerce, Humanities)",
@@ -1916,29 +2780,28 @@ export function buildMindmapTree(profile, roadmap, completedMilestoneIds = new S
       }
     );
     
+    const school9SkillsNode = buildSkillsNode("school-9", roadmap, profile, categorized.school9.map(m => m.id));
     const grade9Children = [grade10Node, ...categorized.school9];
-    const school9SkillsNode = buildSkillsNode("school-9", roadmap);
-    if (school9SkillsNode) {
-      grade9Children.push(school9SkillsNode);
+    if (school10SkillsNode) {
+      grade9Children.push(school10SkillsNode);
     }
     const grade9Node = node(
       "path-9th-grade",
       "9th Grade Exploration",
       "path",
       "Grade 9",
-      "Focus on 9th grade studies, explore science & coding basics.",
+      g9Detail,
       { 
         isUserPath: true, 
         children: grade9Children,
-        stageGoals: [
-          "Explore introductory coding (basic Python or Scratch) or visual design",
-          "Excel in school-level sciences and mathematics",
-          "Participate in science fairs, debates, or co-curricular clubs"
-        ]
+        stageGoals: g9Goals
       }
     );
     
     finalRootChildren = [grade9Node];
+    if (school9SkillsNode) {
+      finalRootChildren.push(school9SkillsNode);
+    }
   }
 
   const root = node(
