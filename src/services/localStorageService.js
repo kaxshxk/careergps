@@ -27,7 +27,8 @@ const STORAGE_KEYS = {
 function safeParse(raw, fallback) {
   if (!raw) return fallback;
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return parsed === null ? fallback : parsed;
   } catch {
     console.warn("[localStorageService] Discarding corrupt storage value:", raw?.slice?.(0, 80));
     return fallback;
@@ -149,7 +150,7 @@ export function saveNodeCache(cache) {
 }
 
 export function loadNodeCache() {
-  return safeParse(localStorage.getItem(STORAGE_KEYS.nodeCache), {});
+  return safeParse(localStorage.getItem(STORAGE_KEYS.nodeCache), {}) || {};
 }
 
 // ─────────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ export function saveNodeStates(states) {
 }
 
 export function loadNodeStates() {
-  return safeParse(localStorage.getItem(STORAGE_KEYS.nodeStates), {});
+  return safeParse(localStorage.getItem(STORAGE_KEYS.nodeStates), {}) || {};
 }
 
 // ─────────────────────────────────────────────────────────
@@ -174,5 +175,5 @@ export function saveCompletedGoalsList(goalTexts) {
 }
 
 export function loadCompletedGoalsList() {
-  return safeParse(localStorage.getItem(STORAGE_KEYS.completedGoals), []);
+  return safeParse(localStorage.getItem(STORAGE_KEYS.completedGoals), []) || [];
 }
