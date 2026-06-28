@@ -624,9 +624,9 @@ function ActiveSection({
     const flatScaffold = flattenScaffold(rootScaffold);
     
     flatScaffold.forEach(node => {
-      const state = nodeStates[node.id] || node.state;
+      const state = (nodeStates || {})[node.id] || node.state;
       if (state !== "locked") {
-        const content = nodeCache[node.id];
+        const content = (nodeCache || {})[node.id];
         if (content && content.skills) {
           content.skills.forEach(skill => {
             need.push({ skill, milestoneId: node.id });
@@ -927,9 +927,9 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates })
 
   // Filter nodes that are unlocked/in progress/completed and have content goals loaded
   const activeNodes = flatNodes.filter(n => {
-    const state = nodeStates[n.id] || n.state;
+    const state = (nodeStates || {})[n.id] || n.state;
     if (state === "locked") return false;
-    const content = nodeCache[n.id];
+    const content = (nodeCache || {})[n.id];
     return content && content.goals && content.goals.length > 0;
   });
 
@@ -958,10 +958,10 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates })
         <div className="mt-6 space-y-6">
           {activeNodes.length > 0 ? (
             activeNodes.map((node) => {
-              const content = nodeCache[node.id];
-              const goals = content.goals || [];
-              const goalReasons = content.goal_reasons || {};
-              const nodeState = nodeStates[node.id] || node.state;
+              const content = (nodeCache || {})[node.id];
+              const goals = content?.goals || [];
+              const goalReasons = content?.goal_reasons || {};
+              const nodeState = (nodeStates || {})[node.id] || node.state;
 
               return (
                 <div key={node.id} className="border border-slate-200/80 rounded-2xl p-5 bg-white shadow-sm flex flex-col gap-4">
