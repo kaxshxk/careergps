@@ -106,9 +106,12 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       nextStates[startNode.id] = "unlocked";
     }
 
+    const safeCache = currentCache || {};
+    const safeStates = nodeStates || {};
+
     function walk(node) {
       const state = nextStates[node.id] || "locked";
-      const content = currentCache[node.id];
+      const content = safeCache[node.id];
       
       // Determine if parent is done / unlocked
       const goalsList = content?.goals || [];
@@ -134,7 +137,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
           const nextState = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
           
           // Preserve custom state if it was in_progress or completed
-          const oldState = nodeStates[child.id] || "locked";
+          const oldState = safeStates[child.id] || "locked";
           if (oldState === "completed" && nextState !== "locked") {
             nextStates[child.id] = "completed";
           } else if (oldState === "in_progress" && nextState !== "locked") {

@@ -92,9 +92,12 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       nextStates[startNode.id] = "unlocked";
     }
 
+    const safeCache = currentCache || {};
+    const safeStates = nodeStates || {};
+
     function walk(node) {
       const state = nextStates[node.id] || "locked";
-      const content = currentCache[node.id];
+      const content = safeCache[node.id];
       const goalsList = content?.goals || [];
       const completedList = goalsList.filter(g => currentGoals.has(g));
       const percentComplete = goalsList.length ? (completedList.length / goalsList.length) : 0;
@@ -114,7 +117,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
           nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "completed" : "locked";
         } else {
           const nextState = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
-          const oldState = nodeStates[child.id] || "locked";
+          const oldState = safeStates[child.id] || "locked";
           if (oldState === "completed" && nextState !== "locked") {
             nextStates[child.id] = "completed";
           } else if (oldState === "in_progress" && nextState !== "locked") {
