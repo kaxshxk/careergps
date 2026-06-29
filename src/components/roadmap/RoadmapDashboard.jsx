@@ -1039,6 +1039,9 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
   const [selUgCourse, setSelUgCourse] = useState("");
   const [expandedSelId, setExpandedSelId] = useState(null);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState(() => new Set());
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wizardOpenNodeId, setWizardOpenNodeId] = useState(null);
+  const [manuallyClosedId, setManuallyClosedId] = useState(null);
 
   const toggleNodeCollapsed = (nodeId) => {
     setCollapsedNodeIds(prev => {
@@ -1059,9 +1062,34 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
   const activeNodes = flatNodes.filter(n => {
     const state = (nodeStates || {})[n.id] || n.state;
     if (state === "locked") return false;
+    // Skip checkpoints and choice/selection points completely from the checklist list
+    if (n.isCheckpoint || n.isSelectionPoint || n.type === "selection") return false;
     const content = (nodeCache || {})[n.id];
     return content && content.goals && content.goals.length > 0;
   });
+
+  // Check if all preceding goals in unlocked stages are completed
+  const allPrecedingGoalsCompleted = activeNodes.every(n => {
+    const content = (nodeCache || {})[n.id];
+    const goalsList = content?.goals || [];
+    return goalsList.every(g => completedGoals.has(g));
+  });
+
+  // Auto-open choice wizard modal when selection nodes unlock and preceding goals are complete
+  useEffect(() => {
+    const activeSelNode = flatNodes.find(n => {
+      if (!n.isSelectionPoint) return false;
+      const state = (nodeStates || {})[n.id] || n.state;
+      return state === "unlocked" || state === "in_progress";
+    });
+    
+    if (activeSelNode && allPrecedingGoalsCompleted && !(userSelections || {})[activeSelNode.id] && manuallyClosedId !== activeSelNode.id) {
+      setWizardOpenNodeId(activeSelNode.id);
+      setWizardStep(1);
+    } else if (!activeSelNode || !allPrecedingGoalsCompleted) {
+      setWizardOpenNodeId(null);
+    }
+  }, [nodeStates, allPrecedingGoalsCompleted, userSelections, manuallyClosedId, flatNodes]);
 
   const handleMouseEnter = (e, text) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1188,7 +1216,7 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
             </div>
           )}
 
-          {/* Guided Branch/Option Selection Cards */}
+          {/* Guided Branch/Option Selection Cards / Banners */}
           {(() => {
             // Find any active/unlocked selection node in flatNodes
             const activeSelNodes = flatNodes.filter(n => {
@@ -1229,219 +1257,295 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
 
             return (
               <div className="mt-8 space-y-6 pt-6 border-t border-slate-200/60">
-                {/* ── UNLOCKED / ACTIVE SELECTIONS ── */}
+                {/* ── UNLOCKED / ACTIVE SELECTIONS WIZARD TRIGGER BANNER ── */}
                 {allPrecedingGoalsCompleted && activeSelNodes.map(node => {
-                  const isExpanded = expandedSelId === node.id;
+                  const isOpen = wizardOpenNodeId === node.id;
+                  if (isOpen) return null; // If open as a modal, don't show the banner
                   
                   return (
                     <div 
                       key={node.id} 
-                      className={`rounded-2xl border transition-all duration-300 ${
-                        isExpanded 
-                          ? "border-cyan-300 bg-cyan-50/10 shadow-lg shadow-cyan-500/5 p-6" 
-                          : "border-cyan-200/80 bg-gradient-to-r from-cyan-50/30 to-sky-50/20 hover:border-cyan-300/90 p-5 shadow-sm"
-                      }`}
+                      className="border border-cyan-200 bg-gradient-to-r from-cyan-50/20 to-sky-50/10 p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in"
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-3">
-                          <span className="text-2xl mt-0.5">🧭</span>
-                          <div>
-                            <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
-                            <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
-                              {node.id === "node-board-select" && "You've completed 10th Grade! Choose your Board and specialized high school Stream below to unlock the next milestones."}
-                              {node.id === "node-ug-select" && "You've completed 12th Grade / Diploma! Choose the College Tier you joined and your UG field course to unlock college semester goals."}
-                              {node.id === "node-postgrad-select" && "You've completed your UG degree! Choose whether you want to enter the workforce directly or continue with a Master's degree."}
-                              {node.id === "node-masters-select" && "You've chosen to pursue a Master's degree! Select your PG course specialization to unlock the PG path goals."}
-                            </p>
-                          </div>
+                      <div className="flex gap-3">
+                        <span className="text-2xl mt-0.5">🧭</span>
+                        <div>
+                          <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
+                          <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
+                            {node.id === "node-board-select" && "Choose your Educational Board & high-school Stream to unlock the next phase milestones."}
+                            {node.id === "node-ug-select" && "Choose your College Tier & UG Course specialization to unlock college semester goals."}
+                            {node.id === "node-postgrad-select" && "Select your post-graduation pathway (Job Placement vs Master's specialization)."}
+                            {node.id === "node-masters-select" && "Choose your Master's course specialization to unlock the PG path goals."}
+                          </p>
                         </div>
-                        
-                        {!isExpanded && (
-                          <button
-                            onClick={() => setExpandedSelId(node.id)}
-                            className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md transition-all shrink-0"
-                          >
-                            Choose Now
-                          </button>
-                        )}
                       </div>
+                      
+                      <button
+                        onClick={() => {
+                          setWizardOpenNodeId(node.id);
+                          setWizardStep(1);
+                          setManuallyClosedId(null);
+                        }}
+                        className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all shrink-0 w-full sm:w-auto text-center"
+                      >
+                        Choose Board & Stream
+                      </button>
+                    </div>
+                  );
+                })}
 
-                      {isExpanded && (
-                        <div className="mt-6 border-t border-cyan-100 pt-5 space-y-5 animate-fade-in">
-                          {/* Board & Stream Form */}
-                          {node.id === "node-board-select" && (
+                {/* ── ONBOARDING WIZARD MODAL OVERLAY ── */}
+                {(() => {
+                  const wizardNode = flatNodes.find(n => n.id === wizardOpenNodeId);
+                  if (!wizardOpenNodeId || !wizardNode) return null;
+
+                  return (
+                    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[2000] flex items-center justify-center p-4 animate-fade-in">
+                      <div 
+                        className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-scale-up"
+                        style={{ fontFamily: "'Inter', sans-serif" }}
+                      >
+                        {/* Modal Header */}
+                        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">🧭</span>
+                            <div>
+                              <span className="text-[10px] font-extrabold text-cyan-600 uppercase tracking-wider">Onboarding Choice Step</span>
+                              <h2 className="font-extrabold text-base text-slate-900 mt-0.5">{wizardNode.label}</h2>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setManuallyClosedId(wizardNode.id);
+                              setWizardOpenNodeId(null);
+                            }}
+                            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-200/50 transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 flex-1 overflow-y-auto max-h-[60vh] space-y-6">
+                          {/* Step Indicators */}
+                          {wizardNode.id === "node-board-select" && (
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 1 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 2 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                            </div>
+                          )}
+                          {wizardNode.id === "node-ug-select" && (
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 1 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 2 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                            </div>
+                          )}
+
+                          {/* WIZARD FLOW: BOARD SELECTION */}
+                          {wizardNode.id === "node-board-select" && (
                             <div className="space-y-4">
-                              <div>
-                                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">1. Select Board</label>
-                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                                  {["CBSE", "State Board (Inter)", "Polytechnic Diploma"].map(opt => (
-                                    <button
-                                      key={opt}
-                                      onClick={() => {
-                                        setSelBoard(opt);
-                                        if (opt === "Polytechnic Diploma") setSelStream(""); // Diploma has no high-school streams
-                                      }}
-                                      className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
-                                        selBoard === opt 
-                                          ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
-                                          : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
-                                      }`}
-                                    >
-                                      {opt}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {selBoard && selBoard !== "Polytechnic Diploma" && (
-                                <div className="animate-fade-in">
-                                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">2. Select Stream Branch</label>
-                                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                                    {["Science (PCM/B)", "Commerce", "Arts/Humanities"].map(opt => (
+                              {wizardStep === 1 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 1: Select Your Board</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Choose the educational board you want to pursue for your high school studies.</p>
+                                  </div>
+                                  
+                                  <div className="grid gap-3">
+                                    {[
+                                      { value: "CBSE", title: "CBSE Board", desc: "Central Board of Secondary Education. Standardized curriculum, ideal for competitive prep." },
+                                      { value: "State Board (Inter)", title: "State Board / Intermediate", desc: "Region-specific curriculum, focused on state university tracks." },
+                                      { value: "Polytechnic Diploma", title: "Polytechnic Diploma", desc: "A technical/vocational pathway leading directly into practical domains." }
+                                    ].map(opt => (
                                       <button
-                                        key={opt}
-                                        onClick={() => setSelStream(opt)}
-                                        className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
-                                          selStream === opt 
-                                            ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
-                                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
+                                        key={opt.value}
+                                        onClick={() => {
+                                          setSelBoard(opt.value);
+                                          if (opt.value === "Polytechnic Diploma") {
+                                            setSelStream(""); // Diploma has no high-school streams
+                                          }
+                                        }}
+                                        className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full ${
+                                          selBoard === opt.value
+                                            ? "border-cyan-600 bg-cyan-50/20 shadow-md shadow-cyan-650/5"
+                                            : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
                                         }`}
                                       >
-                                        {opt}
+                                        <span className={`text-sm font-extrabold ${selBoard === opt.value ? "text-cyan-900" : "text-slate-800"}`}>
+                                          {opt.title}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-normal leading-normal">
+                                          {opt.desc}
+                                        </span>
                                       </button>
                                     ))}
                                   </div>
                                 </div>
                               )}
 
-                              <div className="flex justify-end gap-3 pt-4 border-t border-cyan-100/60">
-                                <button
-                                  onClick={() => setExpandedSelId(null)}
-                                  className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl transition"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  disabled={!selBoard || (selBoard !== "Polytechnic Diploma" && !selStream)}
-                                  onClick={() => {
-                                    const val = selBoard === "Polytechnic Diploma" ? selBoard : `${selBoard} - ${selStream}`;
-                                    onSelectOption(node.id, val);
-                                    setExpandedSelId(null);
-                                  }}
-                                  className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
-                                >
-                                  Confirm Selection
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                              {wizardStep === 2 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 2: Select Your Stream (Branch)</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Select your specialized branch for {selBoard}. This will unlock stream-specific subjects.</p>
+                                  </div>
 
-                          {/* College Tier & UG Course Form */}
-                          {node.id === "node-ug-select" && (
-                            <div className="space-y-4">
-                              <div>
-                                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">1. Select College Tier Joined</label>
-                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                                  {["Tier 1 (Top Tier/National)", "Tier 2 (Good State/Private)", "Tier 3 (Local College)"].map(opt => (
-                                    <button
-                                      key={opt}
-                                      onClick={() => setSelTier(opt.split(" ")[0] + " " + opt.split(" ")[1])} // e.g. "Tier 1"
-                                      className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
-                                        selTier === (opt.split(" ")[0] + " " + opt.split(" ")[1])
-                                          ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
-                                          : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
-                                      }`}
-                                    >
-                                      {opt}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">2. Select UG degree course</label>
-                                <div className="mt-2 flex flex-col gap-2.5">
-                                  {[
-                                    "B.Tech / B.E. (Computer Science/IT)",
-                                    "B.Sc (Sciences/Biotech)",
-                                    "B.Com / BBA (Business/Finance)",
-                                    "BA (Arts/Humanities/Law)",
-                                    "MBBS / BDS (Medicine)"
-                                  ].map(opt => {
-                                    const isRecommended = opt.toLowerCase().includes(recUg.split(" ")[0].toLowerCase().replace("b.tech", "b.tech").replace("b.sc", "b.sc").replace("b.com", "b.com").slice(0,6));
-                                    return (
+                                  <div className="grid gap-3">
+                                    {[
+                                      { value: "Science (PCM/B)", title: "Science Stream (PCM/B)", desc: "Physics, Chemistry, Mathematics, Biology. Prepares for engineering, medicine, and research." },
+                                      { value: "Commerce", title: "Commerce Stream", desc: "Accountancy, Business Studies, Economics. Prepares for finance, business, entrepreneurship, and CA." },
+                                      { value: "Arts/Humanities", title: "Arts & Humanities Stream", desc: "History, Geography, Political Science, Psychology. Prepares for humanities, law, design, and UPSC." }
+                                    ].map(opt => (
                                       <button
-                                        key={opt}
-                                        onClick={() => setSelUgCourse(opt)}
-                                        className={`p-3.5 rounded-xl border text-xs font-bold text-left transition-all flex justify-between items-center ${
-                                          selUgCourse === opt 
-                                            ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
-                                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
+                                        key={opt.value}
+                                        onClick={() => setSelStream(opt.value)}
+                                        className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full ${
+                                          selStream === opt.value
+                                            ? "border-cyan-600 bg-cyan-50/20 shadow-md shadow-cyan-650/5"
+                                            : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
                                         }`}
                                       >
-                                        <span>{opt}</span>
-                                        {isRecommended && (
-                                          <span className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
-                                            selUgCourse === opt 
-                                              ? "bg-cyan-700 border-cyan-500 text-cyan-100" 
-                                              : "bg-amber-100 border-amber-200 text-amber-800"
-                                          }`}>
-                                            Recommended ⭐
-                                          </span>
-                                        )}
+                                        <span className={`text-sm font-extrabold ${selStream === opt.value ? "text-cyan-900" : "text-slate-800"}`}>
+                                          {opt.title}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-normal leading-normal">
+                                          {opt.desc}
+                                        </span>
                                       </button>
-                                    );
-                                  })}
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-
-                              <div className="flex justify-end gap-3 pt-4 border-t border-cyan-100/60">
-                                <button
-                                  onClick={() => setExpandedSelId(null)}
-                                  className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl transition"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  disabled={!selTier || !selUgCourse}
-                                  onClick={() => {
-                                    onSelectOption(node.id, `${selTier} - ${selUgCourse}`);
-                                    setExpandedSelId(null);
-                                  }}
-                                  className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
-                                >
-                                  Confirm Selection
-                                </button>
-                              </div>
+                              )}
                             </div>
                           )}
 
-                          {/* Post-graduation Pathway Form */}
-                          {node.id === "node-postgrad-select" && (
+                          {/* WIZARD FLOW: UG SELECTION */}
+                          {wizardNode.id === "node-ug-select" && (
                             <div className="space-y-4">
-                              <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Select your pathway</label>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {["→ Enter Workforce", "→ Masters Degree"].map(opt => {
-                                  const isRecommended = opt === recPg;
+                              {wizardStep === 1 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 1: Select College Tier Joined</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Select the classification tier of the college you joined for undergraduate studies.</p>
+                                  </div>
+                                  
+                                  <div className="grid gap-3">
+                                    {[
+                                      { value: "Tier 1", title: "Tier 1 College", desc: "Top Tier national institutions (IITs, NITs, BITS, Top Universities). Highly selective." },
+                                      { value: "Tier 2", title: "Tier 2 College", desc: "Established state government universities and reputable private engineering/degree colleges." },
+                                      { value: "Tier 3", title: "Tier 3 College", desc: "Local affiliated colleges and regional teaching colleges." }
+                                    ].map(opt => (
+                                      <button
+                                        key={opt.value}
+                                        onClick={() => setSelTier(opt.value)}
+                                        className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full ${
+                                          selTier === opt.value
+                                            ? "border-cyan-600 bg-cyan-50/20 shadow-md shadow-cyan-650/5"
+                                            : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
+                                        }`}
+                                      >
+                                        <span className={`text-sm font-extrabold ${selTier === opt.value ? "text-cyan-900" : "text-slate-800"}`}>
+                                          {opt.title}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-normal leading-normal">
+                                          {opt.desc}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {wizardStep === 2 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 2: Select UG Degree Course</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Select the course you are enrolled in. The recommended option is highlighted based on your profile.</p>
+                                  </div>
+
+                                  <div className="flex flex-col gap-3">
+                                    {[
+                                      { value: "B.Tech / B.E. (Computer Science/IT)", title: "B.Tech / B.E. (Computer Science/IT)", desc: "Core software engineering, algorithms, computing architecture." },
+                                      { value: "B.Sc (Sciences/Biotech)", title: "B.Sc (Sciences/Biotech)", desc: "Scientific principles, life sciences, chemical/biological disciplines." },
+                                      { value: "B.Com / BBA (Business/Finance)", title: "B.Com / BBA (Business/Finance)", desc: "Corporate management, accounts, micro/macro economics." },
+                                      { value: "BA (Arts/Humanities/Law)", title: "BA (Arts/Humanities/Law)", desc: "Humanities studies, corporate/IP law, design tracks." },
+                                      { value: "MBBS / BDS (Medicine)", title: "MBBS / BDS (Medicine)", desc: "Clinical practice, surgical fundamentals, biology core." }
+                                    ].map(opt => {
+                                      const isRecommended = opt.value.toLowerCase().includes(recUg.split(" ")[0].toLowerCase().replace("b.tech", "b.tech").replace("b.sc", "b.sc").replace("b.com", "b.com").slice(0,6));
+                                      return (
+                                        <button
+                                          key={opt.value}
+                                          onClick={() => setSelUgCourse(opt.value)}
+                                          className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full relative ${
+                                            selUgCourse === opt.value
+                                              ? "border-cyan-600 bg-cyan-50/20 shadow-md"
+                                              : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
+                                          }`}
+                                        >
+                                          <div className="flex justify-between items-center w-full">
+                                            <span className={`text-sm font-extrabold ${selUgCourse === opt.value ? "text-cyan-950" : "text-slate-805"}`}>
+                                              {opt.title}
+                                            </span>
+                                            {isRecommended && (
+                                              <span className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                                                selUgCourse === opt.value 
+                                                  ? "bg-cyan-700 border-cyan-500 text-cyan-100" 
+                                                  : "bg-amber-100 border-amber-250 text-amber-800"
+                                              }`}>
+                                                Recommended ⭐
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-xs text-slate-500 font-normal leading-normal">
+                                            {opt.desc}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* WIZARD FLOW: POSTGRAD WORKFORCE vs MASTERS */}
+                          {wizardNode.id === "node-postgrad-select" && (
+                            <div className="space-y-4 animate-fade-in">
+                              <div className="mb-2">
+                                <h4 className="text-sm font-extrabold text-slate-800">Select Post-Graduation Pathway</h4>
+                                <p className="text-xs text-slate-500 mt-1">Select whether you want to enter the workforce directly or specialize with a Master's degree.</p>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {[
+                                  { value: "→ Enter Workforce", title: "Enter Workforce", desc: "Pivot directly into target industry associate roles, placements, and client projects.", action: "Secure Job Placement" },
+                                  { value: "→ Masters Degree", title: "Master's Degree", desc: "Pursue post-graduate studies (M.Tech/MBA/M.Sc) to gain specialized depth.", action: "Higher Specialization" }
+                                ].map(opt => {
+                                  const isRecommended = opt.value === recPg;
                                   return (
                                     <button
-                                      key={opt}
+                                      key={opt.value}
                                       onClick={() => {
-                                        onSelectOption(node.id, opt);
-                                        setExpandedSelId(null);
+                                        onSelectOption(wizardNode.id, opt.value);
+                                        setWizardOpenNodeId(null);
                                       }}
-                                      className="p-4 rounded-xl border text-xs font-bold text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition-all flex flex-col gap-2 group"
+                                      className="p-5 rounded-2xl border text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition-all flex flex-col justify-between h-[180px] group"
                                     >
-                                      <div className="flex justify-between items-center w-full">
-                                        <span className="text-sm font-extrabold text-slate-800 group-hover:text-cyan-600">{opt.replace("→ ", "")}</span>
-                                        {isRecommended && (
-                                          <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
-                                            Recommended ⭐
-                                          </span>
-                                        )}
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between items-center w-full">
+                                          <span className="text-sm font-extrabold text-slate-800 group-hover:text-cyan-600">{opt.title}</span>
+                                          {isRecommended && (
+                                            <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-250 text-amber-800 px-2 py-0.5 rounded-full">
+                                              Recommended ⭐
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-slate-500 leading-normal font-normal">
+                                          {opt.desc}
+                                        </p>
                                       </div>
-                                      <span className="text-[11px] text-slate-500 font-normal">
-                                        {opt === "→ Enter Workforce" ? "Pivot into target industry roles and secure placements." : "Advance scientific, research, or executive specialization."}
+                                      <span className="text-[10px] font-extrabold text-cyan-600 group-hover:text-cyan-700 tracking-wider uppercase mt-4">
+                                        {opt.action} →
                                       </span>
                                     </button>
                                   );
@@ -1450,30 +1554,37 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
                             </div>
                           )}
 
-                          {/* Masters Specialization Form */}
-                          {node.id === "node-masters-select" && (
-                            <div className="space-y-4">
-                              <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Select PG Specialization Course</label>
-                              <div className="flex flex-col gap-2.5">
+                          {/* WIZARD FLOW: MASTERS SPECIALIZATION */}
+                          {wizardNode.id === "node-masters-select" && (
+                            <div className="space-y-4 animate-fade-in">
+                              <div className="mb-2">
+                                <h4 className="text-sm font-extrabold text-slate-800">Choose Master's Specialization</h4>
+                                <p className="text-xs text-slate-500 mt-1">Select your specialized post-graduate course pathway. Recommended based on UG background.</p>
+                              </div>
+
+                              <div className="flex flex-col gap-3">
                                 {[
-                                  "M.Tech / MS (Computer Science/IT)",
-                                  "MBA (Management/Finance)",
-                                  "M.Sc (Sciences)",
-                                  "MA (Arts/Humanities/Law)"
+                                  { value: "M.Tech / MS (Computer Science/IT)", title: "M.Tech / MS (Computer Science/IT)", desc: "Advanced systems engineering, algorithms, AI/ML specialization." },
+                                  { value: "MBA (Management/Finance)", title: "MBA (Business/Finance)", desc: "Corporate strategy, financial modeling, organizational leadership." },
+                                  { value: "M.Sc (Sciences)", title: "M.Sc (Advanced Sciences)", desc: "Advanced scientific research, biotechnology lab specialties." },
+                                  { value: "MA (Arts/Humanities/Law)", title: "MA (Humanities/IP Law)", desc: "IP law, legal litigation, media, creative communications." }
                                 ].map(opt => {
-                                  const isRecommended = opt === recPgCourse;
+                                  const isRecommended = opt.value === recPgCourse;
                                   return (
                                     <button
-                                      key={opt}
+                                      key={opt.value}
                                       onClick={() => {
-                                        onSelectOption(node.id, opt);
-                                        setExpandedSelId(null);
+                                        onSelectOption(wizardNode.id, opt.value);
+                                        setWizardOpenNodeId(null);
                                       }}
-                                      className="p-3.5 rounded-xl border text-xs font-bold text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition flex justify-between items-center"
+                                      className="p-4 rounded-2xl border text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition-all flex justify-between items-center w-full"
                                     >
-                                      <span>{opt}</span>
+                                      <div>
+                                        <span className="text-sm font-extrabold text-slate-800">{opt.title}</span>
+                                        <p className="text-xs text-slate-500 mt-1 font-normal">{opt.desc}</p>
+                                      </div>
                                       {isRecommended && (
-                                        <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                                        <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-255 text-amber-800 px-2 py-0.5 rounded-full shrink-0">
                                           Recommended ⭐
                                         </span>
                                       )}
@@ -1484,10 +1595,55 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
                             </div>
                           )}
                         </div>
-                      )}
+
+                        {/* Modal Footer */}
+                        {((wizardNode.id === "node-board-select" && wizardStep === 2) || 
+                          (wizardNode.id === "node-board-select" && selBoard === "Polytechnic Diploma") ||
+                          (wizardNode.id === "node-ug-select" && wizardStep === 2)) && (
+                          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center gap-3">
+                            <button
+                              onClick={() => setWizardStep(1)}
+                              className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl transition"
+                            >
+                              ← Back
+                            </button>
+                            <button
+                              disabled={
+                                (wizardNode.id === "node-board-select" && selBoard !== "Polytechnic Diploma" && !selStream) ||
+                                (wizardNode.id === "node-ug-select" && !selUgCourse)
+                              }
+                              onClick={() => {
+                                if (wizardNode.id === "node-board-select") {
+                                  const val = selBoard === "Polytechnic Diploma" ? selBoard : `${selBoard} - ${selStream}`;
+                                  onSelectOption(wizardNode.id, val);
+                                } else if (wizardNode.id === "node-ug-select") {
+                                  onSelectOption(wizardNode.id, `${selTier} - ${selUgCourse}`);
+                                }
+                                setWizardOpenNodeId(null);
+                              }}
+                              className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+                            >
+                              Confirm & Unlock Pathway
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Next button for Step 1 in multi-step wizard */}
+                        {((wizardNode.id === "node-board-select" && wizardStep === 1 && selBoard && selBoard !== "Polytechnic Diploma") || 
+                          (wizardNode.id === "node-ug-select" && wizardStep === 1 && selTier)) && (
+                          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                            <button
+                              onClick={() => setWizardStep(2)}
+                              className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+                            >
+                              Continue Step 2 →
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
-                })}
+                })()}
 
                 {/* ── COMPLETED / HISTORIC SELECTIONS ── */}
                 {doneSelNodes.length > 0 && (
