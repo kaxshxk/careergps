@@ -1084,12 +1084,15 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
     });
     
     if (activeSelNode && allPrecedingGoalsCompleted && !(userSelections || {})[activeSelNode.id] && manuallyClosedId !== activeSelNode.id) {
-      setWizardOpenNodeId(activeSelNode.id);
-      setWizardStep(1);
+      // Only set wizard state and reset step if it's not already open for this node
+      if (wizardOpenNodeId !== activeSelNode.id) {
+        setWizardOpenNodeId(activeSelNode.id);
+        setWizardStep(1);
+      }
     } else if (!activeSelNode || !allPrecedingGoalsCompleted) {
       setWizardOpenNodeId(null);
     }
-  }, [nodeStates, allPrecedingGoalsCompleted, userSelections, manuallyClosedId, flatNodes]);
+  }, [nodeStates, allPrecedingGoalsCompleted, userSelections, manuallyClosedId, flatNodes, wizardOpenNodeId]);
 
   const handleMouseEnter = (e, text) => {
     const rect = e.currentTarget.getBoundingClientRect();
