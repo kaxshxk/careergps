@@ -676,7 +676,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         </div>
 
         {/* Right Sidebar Popover */}
-        <div style={{ width: 380, height: "100%", flexShrink: 0, borderLeft: "1px solid #e2e8f0", zIndex: 60 }}>
+        <div style={{ width: 380, height: "100%", flexShrink: 0, borderLeft: "1px solid #e2e8f0", zIndex: 10 }}>
           <MindmapNodePopover
             node={activeNode}
             nodeContent={activeNode ? nodeCache[activeNode.id] : null}

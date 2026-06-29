@@ -5,7 +5,7 @@ export default function CheckpointPanel({ checkpointLabel, profile, checkpointDa
 
   if (!checkpointData) {
     return (
-      <div className="fixed right-0 top-0 h-full w-[420px] bg-slate-900 border-l border-slate-800 text-white p-6 shadow-2xl z-50 flex flex-col justify-center items-center">
+      <div className="fixed right-0 top-0 h-full w-[420px] bg-slate-900 border-l border-slate-800 text-white p-6 shadow-2xl z-[90] flex flex-col justify-center items-center">
         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-violet-500 mb-4"></div>
         <p className="text-sm text-slate-400">Loading Checkpoint Insights...</p>
       </div>
@@ -25,13 +25,13 @@ export default function CheckpointPanel({ checkpointLabel, profile, checkpointDa
     <>
       {/* Backdrop overlay */}
       <div 
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-350"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[80] transition-opacity duration-350"
         onClick={onClose}
       />
 
       {/* Slide-in container */}
       <div 
-        className="fixed right-0 top-0 h-full w-full max-w-[500px] bg-slate-900 border-l border-slate-800 text-white p-6 shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-out transform translate-x-0"
+        className="fixed right-0 top-0 h-full w-full max-w-[500px] bg-slate-900 border-l border-slate-800 text-white p-6 shadow-2xl z-[90] flex flex-col transition-transform duration-300 ease-out transform translate-x-0"
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
         {/* Header */}
