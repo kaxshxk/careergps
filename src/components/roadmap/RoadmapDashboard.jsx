@@ -154,6 +154,63 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
     });
   }, [nodeCache, nodeStates, userSelections, reevaluateStates]);
 
+  const flatScaffold = useMemo(() => {
+    const root = buildMindmapScaffold(profile, nodeStates);
+    return flattenScaffold(root);
+  }, [profile, nodeStates]);
+
+  // Eagerly pre-fetch content for any unlocked nodes in the background
+  useEffect(() => {
+    const fetchUnlockedContent = async () => {
+      const unfetchedUnlockedNodes = flatScaffold.filter(n => {
+        const state = (nodeStates || {})[n.id] || n.state;
+        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint && !n.isCheckpoint;
+      });
+
+      if (unfetchedUnlockedNodes.length === 0) return;
+
+      for (const node of unfetchedUnlockedNodes) {
+        try {
+          const response = await fetch("/api/node-content", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              profile,
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeLabel: node.label,
+              parentNodeLabel: node.parentId ? (flatScaffold.find(p => p.id === node.parentId)?.label || "Parent Node") : "You Are Here",
+              allCompletedGoals: Array.from(completedGoals)
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setNodeCache(prev => {
+              const updated = { ...prev, [node.id]: data };
+              saveNodeCache(updated);
+
+              // Trigger a re-evaluation of states with the new cache data
+              setTimeout(() => {
+                setNodeStates(oldStates => {
+                  const nextStates = reevaluateStates(completedGoals, userSelections, updated);
+                  saveNodeStates(nextStates);
+                  return nextStates;
+                });
+              }, 0);
+
+              return updated;
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to eagerly fetch content for unlocked node ${node.id}`, e);
+        }
+      }
+    };
+
+    fetchUnlockedContent();
+  }, [flatScaffold, nodeStates, nodeCache, profile, completedGoals, userSelections, reevaluateStates]);
+
   const currentPhase = profile.onboardingPhase || 1;
   const phaseCompleted = useMemo(() => {
     const milestones = roadmap.goalsToAchieve?.milestones || [];

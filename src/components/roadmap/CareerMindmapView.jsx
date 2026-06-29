@@ -195,6 +195,58 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     }
   }, [startingNodeId, nodeCache, flatScaffold, profile, completedGoals, userSelections, reevaluateStates]);
 
+  // Eagerly pre-fetch content for any unlocked nodes in the background
+  useEffect(() => {
+    const fetchUnlockedContent = async () => {
+      const unfetchedUnlockedNodes = flatScaffold.filter(n => {
+        const state = (nodeStates || {})[n.id] || n.state;
+        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint && !n.isCheckpoint;
+      });
+
+      if (unfetchedUnlockedNodes.length === 0) return;
+
+      for (const node of unfetchedUnlockedNodes) {
+        try {
+          const response = await fetch("/api/node-content", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              profile,
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeLabel: node.label,
+              parentNodeLabel: node.parentId ? (flatScaffold.find(p => p.id === node.parentId)?.label || "Parent Node") : "You Are Here",
+              allCompletedGoals: Array.from(completedGoals)
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setNodeCache(prev => {
+              const updated = { ...prev, [node.id]: data };
+              saveNodeCache(updated);
+              
+              // Trigger a re-evaluation of states with the new cache data
+              setTimeout(() => {
+                setNodeStates(oldStates => {
+                  const nextStates = reevaluateStates(completedGoals, userSelections, updated);
+                  saveNodeStates(nextStates);
+                  return nextStates;
+                });
+              }, 0);
+
+              return updated;
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to eagerly fetch content for unlocked node ${node.id}`, e);
+        }
+      }
+    };
+
+    fetchUnlockedContent();
+  }, [flatScaffold, nodeStates, nodeCache, profile, completedGoals, userSelections, reevaluateStates]);
+
   // ── Fetch node content dynamically on click ──
   const fetchNodeContent = async (nodeId, nodeType, nodeLabel, parentNodeLabel) => {
     if (nodeCache[nodeId]) return;
