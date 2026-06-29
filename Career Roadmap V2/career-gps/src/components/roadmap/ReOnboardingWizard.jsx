@@ -34,7 +34,10 @@ export default function ReOnboardingWizard({ profile, phase, onComplete, onClose
   const [collegeFocus, setCollegeFocus] = useState("Campus Placements");
   const [timeCommitment, setTimeCommitment] = useState("Balanced");
   const [overrideStreamWarning, setOverrideStreamWarning] = useState(false);
-  const [postCollegeChoice, setPostCollegeChoice] = useState("FIND_JOB");
+  const [postCollegeChoice, setPostCollegeChoice] = useState("JUNIOR_ROLE");
+  const [targetLeadershipGoal, setTargetLeadershipGoal] = useState("SENIOR");
+  const [collegeTier, setCollegeTier] = useState("TIER_1");
+  const [postGradCourse, setPostGradCourse] = useState("");
 
   const stepsPhase1 = useMemo(() => {
     const list = [
@@ -553,67 +556,186 @@ export default function ReOnboardingWizard({ profile, phase, onComplete, onClose
     return list;
   }, [goalType, goalDesc, enableLongTerm, hasCourseInMind, courseInput, collegeDegree, collegeEnvironment, collegeFocus, timeCommitment]);
 
-  const stepsPhase3 = useMemo(() => [
-    {
-      title: "Has your career goal changed?",
-      prompt: "Adjust your career goal or explain what role you are targeting now.",
-      render: () => (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Goal Category</label>
-            <select
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-ocean"
-              value={goalType}
-              onChange={(e) => setGoalType(e.target.value)}
-            >
-              <option value="JOB_ROLE">Job role / Professional position</option>
-              <option value="STARTUP">Entrepreneurship</option>
-              <option value="HIGHER_STUDIES">Higher studies / Research</option>
-              <option value="NOT_SURE">Not sure yet</option>
-            </select>
+  const stepsPhase3 = useMemo(() => {
+    const list = [
+      {
+        title: "Has your career goal changed?",
+        prompt: "Adjust your career goal or explain what role you are targeting now.",
+        render: () => (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Goal Category</label>
+              <select
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-ocean"
+                value={goalType}
+                onChange={(e) => setGoalType(e.target.value)}
+              >
+                <option value="JOB_ROLE">Job role / Professional position</option>
+                <option value="STARTUP">Entrepreneurship</option>
+                <option value="HIGHER_STUDIES">Higher studies / Research</option>
+                <option value="NOT_SURE">Not sure yet</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Description</label>
+              <textarea
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-ocean text-sm h-28"
+                value={goalDesc}
+                placeholder="e.g. Become a software engineer, or start your own business..."
+                onChange={(e) => setGoalDesc(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Description</label>
-            <textarea
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-ocean text-sm h-28"
-              value={goalDesc}
-              placeholder="e.g. Become a software engineer, or start your own business..."
-              onChange={(e) => setGoalDesc(e.target.value)}
-            />
+        ),
+        validate: () => goalDesc.trim().length > 0 ? "" : "Please describe your career goal."
+      },
+      {
+        title: "What do you want to do next?",
+        prompt: "Configure your post-college trajectory based on your situation.",
+        render: () => (
+          <div className="grid gap-3">
+            {[
+              ["JUNIOR_ROLE", "💼 Find a Junior Role", "Enter the job market, securing junior roles and scaling to senior positions."],
+              ["MASTERS", "🎓 Pursue a Master's / PG Degree", "Prepare for competitive exams (GATE, CAT, GRE) and pursue postgraduate studies."]
+            ].map(([val, title, desc]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setPostCollegeChoice(val)}
+                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
+                  postCollegeChoice === val
+                    ? "border-emerald-500 bg-emerald-500/10 text-white"
+                    : "border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <h4 className="font-bold text-[15px]">{title}</h4>
+                <p className="text-xs text-slate-400 mt-1">{desc}</p>
+              </button>
+            ))}
           </div>
-        </div>
-      ),
-      validate: () => goalDesc.trim().length > 0 ? "" : "Please describe your career goal."
-    },
-    {
-      title: "What do you want to do next?",
-      prompt: "Configure your post-college trajectory based on your situation.",
-      render: () => (
-        <div className="grid gap-3">
-          {[
-            ["FIND_JOB", "💼 Find a Job & Start Career", "Enter the job market, securing junior roles and scaling to senior positions."],
-            ["MASTERS", "🎓 Pursue a Master's / PG Degree", "Prepare for competitive exams (GATE, CAT, GRE) and pursue postgraduate studies."],
-            ["ENTREPRENEURSHIP", "🚀 Build a Startup / Venture", "Focus on building a business, validating a product, and raising capital."]
-          ].map(([val, title, desc]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setPostCollegeChoice(val)}
-              className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
-                postCollegeChoice === val
-                  ? "border-emerald-500 bg-emerald-500/10 text-white"
-                  : "border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <h4 className="font-bold text-[15px]">{title}</h4>
-              <p className="text-xs text-slate-400 mt-1">{desc}</p>
-            </button>
-          ))}
-        </div>
-      ),
-      validate: () => ""
+        ),
+        validate: () => ""
+      }
+    ];
+
+    if (postCollegeChoice === "JUNIOR_ROLE") {
+      list.push({
+        title: "What is your target career progression?",
+        prompt: `Select the career goal trajectory you'd like to target after starting your junior role.`,
+        render: () => (
+          <div className="grid gap-3">
+            {[
+              ["SENIOR", "💻 Senior Specialist / Individual Contributor", "Focus on technical mastery, software architecture, mentoring, and deep system engineering."],
+              ["MANAGER", "👥 Team Manager / Project Lead", "Focus on project delivery, agile execution, people management, and cross-functional leadership."],
+              ["EXECUTIVE", "📈 Director / Engineering Executive", "Focus on strategic roadmap alignment, organization-wide architecture, engineering culture, and business metrics."]
+            ].map(([val, title, desc]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setTargetLeadershipGoal(val)}
+                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
+                  targetLeadershipGoal === val
+                    ? "border-emerald-500 bg-emerald-500/10 text-white"
+                    : "border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <h4 className="font-bold text-[15px]">{title}</h4>
+                <p className="text-xs text-slate-400 mt-1">{desc}</p>
+              </button>
+            ))}
+          </div>
+        ),
+        validate: () => ""
+      });
     }
-  ], [goalType, goalDesc, postCollegeChoice]);
+
+    if (postCollegeChoice === "MASTERS") {
+      list.push({
+        title: "Which tier of college did you get admission into?",
+        prompt: "Choose the target academic tier for your PG studies.",
+        render: () => (
+          <div className="grid gap-3">
+            {[
+              ["TIER_1", "🏫 Tier 1 Institution (Premier)", "IITs, IISc, Top-tier IIMs, prestigious foreign Ivy League, or leading Central Universities."],
+              ["TIER_2", "🏢 Tier 2 Institution (Reputed)", "Reputed State Universities, top regional engineering/commerce campuses, and selective business schools."],
+              ["TIER_3", "🏠 Tier 3 / Other colleges", "Local accredited institutions, distance learning options, or regional colleges."]
+            ].map(([val, title, desc]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setCollegeTier(val)}
+                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
+                  collegeTier === val
+                    ? "border-emerald-500 bg-emerald-500/10 text-white"
+                    : "border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <h4 className="font-bold text-[15px]">{title}</h4>
+                <p className="text-xs text-slate-400 mt-1">{desc}</p>
+              </button>
+            ))}
+          </div>
+        ),
+        validate: () => ""
+      });
+
+      list.push({
+        title: "Which course do you want to pursue?",
+        prompt: "Select your target post-graduate major specialization.",
+        render: () => {
+          const userField = profile.field?.type || "TECH";
+          const isTech = userField === "TECH" || userField === "SCIENCE" || goalDesc.toLowerCase().includes("engineer") || goalDesc.toLowerCase().includes("developer") || goalDesc.toLowerCase().includes("data") || goalDesc.toLowerCase().includes("tech");
+          
+          const courses = isTech
+            ? [
+                ["M.Tech / MS (Computer Science/IT)", "Advanced study of machine learning, algorithms, and system engineering.", true],
+                ["M.S. in Software Engineering / IT", "Focused on application architecture, full-stack design, and cloud systems.", false],
+                ["MBA in Technology & Systems Management", "Blends advanced systems architectures with strategic leadership and business.", false]
+              ]
+            : [
+                ["MBA (Management/Finance)", "Standard business post-graduate management stream at premier campuses.", true],
+                ["M.Sc / M.S. in Business Analytics & Data", "Focused on quantitative business intelligence, data-driven decisions.", false],
+                ["M.Com / Master of Commerce", "Core financial laws, tax planning, auditing, and corporate accounting.", false]
+              ];
+
+          return (
+            <div className="grid gap-3">
+              {courses.map(([val, desc, isRec]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setPostGradCourse(val)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
+                    postGradCourse === val
+                      ? "border-emerald-500 bg-emerald-500/10 text-white"
+                      : "border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  <h4 className="font-bold text-[15px]">
+                    {isRec ? <span className="text-emerald-400 font-extrabold mr-1">🌟 (Recommended)</span> : ""}
+                    {val}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1">{desc}</p>
+                </button>
+              ))}
+              <div className="mt-2">
+                <input
+                  type="text"
+                  placeholder="Or enter your custom course here..."
+                  className="w-full rounded-lg border border-slate-700 bg-slate-850 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-ocean text-xs"
+                  value={courses.some(c => c[0] === postGradCourse) ? "" : postGradCourse}
+                  onChange={(e) => setPostGradCourse(e.target.value)}
+                />
+              </div>
+            </div>
+          );
+        },
+        validate: () => postGradCourse.trim().length > 0 ? "" : "Please select or type your post-graduate course."
+      });
+    }
+
+    return list;
+  }, [goalType, goalDesc, postCollegeChoice, targetLeadershipGoal, collegeTier, postGradCourse, profile.field?.type]);
 
   const startStage = profile.startStage || (profile.startedInPhase1 ? "CLASS_7_8" : (profile.startedInPhase2 ? "CLASS_9_10" : "UNDERGRADUATE"));
   const currentSteps = (() => {
@@ -709,6 +831,13 @@ export default function ReOnboardingWizard({ profile, phase, onComplete, onClose
       } else {
         // startStage === "UNDERGRADUATE", "POSTGRADUATE", "WORKING"
         nextProfile.onboardingPhase = phase + 1;
+      }
+
+      if (currentSteps === stepsPhase3) {
+        nextProfile.postCollegeChoice = postCollegeChoice;
+        nextProfile.targetLeadershipGoal = targetLeadershipGoal;
+        nextProfile.collegeTier = collegeTier;
+        nextProfile.postGradCourse = postGradCourse;
       }
 
       onComplete(nextProfile);

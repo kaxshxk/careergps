@@ -1655,13 +1655,61 @@ function getOfflineMockNodeContent(nodeId, nodeLabel, profile) {
     }
     summary = "Semester 8 focuses on defending your capstone project/dissertation, clearing academic credits, and starting corporate pre-onboarding.";
   } else if (lowId.includes("pg")) {
-    goals = [
-      `Master advanced specialization coursework (AI/ML algorithms, Advanced Corporate Strategy, or clinical diagnostics)`,
-      `Conduct thesis or specialized research and aim to publish at least one peer-reviewed conference paper`,
-      `Prepare for post-graduate final placements and apply to senior leadership associate roles`
-    ];
-    skills = ["Research methodology", "Specialized domain tools", "Leadership prep"];
-    summary = "Your Master's degree is about advanced mastery. Publish research, complete specialized internships, and transition into senior industry roles.";
+    const tier = profile?.collegeTier || "TIER_1";
+    const course = profile?.postGradCourse || "M.Tech / MS (Computer Science/IT)";
+    const isTech = course.toLowerCase().includes("tech") || course.toLowerCase().includes("science") || course.toLowerCase().includes("computer");
+    
+    if (tier === "TIER_1") {
+      goals = [
+        `Master advanced specialization coursework in ${course}`,
+        `Publish a peer-reviewed research paper in a premier international journal or conference (IEEE, ACM, etc.)`,
+        `Leverage elite alumni network and on-campus career cells to secure research fellowships or tier-1 placements`
+      ];
+      skills = [`${isTech ? "Advanced Systems" : "Strategic Analysis"}`, "Collaborative Research", "Alumni Networking"];
+    } else if (tier === "TIER_2") {
+      goals = [
+        `Master advanced specialization coursework in ${course}`,
+        `Design a robust, end-to-end PG major project addressing practical industry-aligned problems`,
+        `Secure standard competitive research assistantships or campus placement opportunities`
+      ];
+      skills = [`${isTech ? "Applied Software Eng" : "Business Analytics"}`, "Industry Case Studies", "Placement Preparation"];
+    } else {
+      goals = [
+        `Master advanced specialization coursework in ${course}`,
+        `Build a strong GitHub portfolio of independent projects to demonstrate practical specialization skills`,
+        `Seek off-campus post-graduate internships and leverage online talent platforms for roles`
+      ];
+      skills = ["Independent Dev", "Off-campus Networking", "Career Portfolios"];
+    }
+    summary = `Your Master's degree in ${course} (Tier ${tier === "TIER_1" ? "1" : (tier === "TIER_2" ? "2" : "3")}) is about advanced mastery. Publish research, complete specialized internships, and transition into senior industry roles.`;
+  } else if (lowId.includes("working") || lowId.includes("job") || lowId.includes("progression")) {
+    const progression = profile?.targetLeadershipGoal || "SENIOR";
+    if (progression === "SENIOR") {
+      goals = [
+        `Master advanced system design, database scalability, and software architecture patterns`,
+        `Take full ownership of a business-critical microservice or feature module end-to-end`,
+        `Conduct detailed code reviews and mentor junior developers to establish best engineering practices`
+      ];
+      skills = ["System Design", "Microservices Scaling", "Technical Mentorship"];
+      summary = "Focus on deep technical mastery, architectural patterns, and mentorship to successfully transition into a Senior individual contributor.";
+    } else if (progression === "MANAGER") {
+      goals = [
+        `Lead agile sprint planning, scope tasks accurately, and coordinate cross-functional milestones`,
+        `Master project management frameworks, resource budgeting, and risk mitigation strategies`,
+        `Conduct 1-on-1 career development check-ins and improve team collaboration and morale`
+      ];
+      skills = ["Agile Leadership", "Project Management", "People Operations"];
+      summary = "Focus on project execution, delivery accountability, budget planning, and people management to transition to an Engineering Manager.";
+    } else {
+      // EXECUTIVE
+      goals = [
+        `Align engineering OKRs with core business metrics and present technical roadmaps to stakeholders`,
+        `Design long-term organizational architecture and define scalable developer workflow standards`,
+        `Navigate cross-team dynamics, resolve complex resource conflicts, and build engineering culture`
+      ];
+      skills = ["Strategic Alignment", "Executive Presence", "Org Architecture"];
+      summary = "Focus on high-level organizational scaling, business alignment, strategic budgeting, and developer culture to transition to an Executive role.";
+    }
   }
   
   // Build goal_reasons
