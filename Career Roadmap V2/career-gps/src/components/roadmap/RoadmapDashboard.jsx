@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { GradientBackground } from "@/components/ui/gradient-background";
 import {
   clearCareerGpsStorage,
@@ -8,7 +8,19 @@ import {
   loadDeepRoadmap,
   saveDeepRoadmap,
   loadResumeAnalysis,
+  loadCompletedDeepWeeks,
+  saveCompletedDeepWeeks,
+  // New local storage cache and states
+  loadNodeCache,
+  saveNodeCache,
+  loadNodeStates,
+  saveNodeStates,
+  loadCompletedGoalsList,
+  saveCompletedGoalsList,
+  loadUserSelections,
+  saveUserSelections
 } from "../../services/localStorageService";
+
 import {
   filterByFinancialTier,
   getAllMilestones,
@@ -16,6 +28,7 @@ import {
   getProgressStats,
   getStageLabel,
 } from "../../utils/roadmapHelpers";
+import { buildMindmapScaffold, flattenScaffold, calculateProgress } from "../../data/scaffoldBuilder";
 import DeepOptimizationWizard from "./DeepOptimizationWizard";
 import ResumeAnalyzer from "../pathforge/ResumeAnalyzer";
 import MarketIntelligence from "../pathforge/MarketIntelligence";
@@ -47,7 +60,7 @@ const tierAccent = {
   LOW: "bg-emerald-600 text-white",
 };
 
-export default function RoadmapDashboard({ profile, roadmap, initialFinancialTier, onReset, onViewTimeline, onViewDecisionTree, onViewMindmap, onProfileUpdate }) {
+export default function RoadmapDashboard({ profile, roadmap, initialFinancialTier, onReset, onViewTimeline, onViewMindmap, onProfileUpdate }) {
   const [activeSection, setActiveSection] = useState("goals");
   const [financialTier, setFinancialTier] = useState(initialFinancialTier || profile.financialTier);
   const [selectedAlternate, setSelectedAlternate] = useState(null);
@@ -55,10 +68,220 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   const [deepRoadmap, setDeepRoadmap] = useState(() => loadDeepRoadmap());
   const [resumeAnalysis, setResumeAnalysis] = useState(() => loadResumeAnalysis());
   const [showWizard, setShowWizard] = useState(false);
-  const [completedDeepWeeks, setCompletedDeepWeeks] = useState(() => {
-    const raw = localStorage.getItem("career-gps:completed-deep-weeks");
-    return raw ? JSON.parse(raw) : [];
+  const [completedDeepWeeks, setCompletedDeepWeeks] = useState(() => loadCompletedDeepWeeks());
+
+  // Mindmap stage-locked lazy state loaded from storage
+  const [completedGoals, setCompletedGoals] = useState(() => new Set(loadCompletedGoalsList()));
+  const [nodeCache, setNodeCache] = useState(() => loadNodeCache());
+  const [nodeStates, setNodeStates] = useState(() => loadNodeStates());
+  const [userSelections, setUserSelections] = useState(() => {
+    try {
+      const raw = localStorage.getItem("career-gps:user-selections");
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
   });
+
+  // Reevaluate node states
+  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache, currentStates) => {
+    const root = buildMindmapScaffold(profile, {});
+    const flat = flattenScaffold(root);
+    const nextStates = {};
+
+    nextStates["node-root"] = "completed";
+
+    const startNode = flat.find(n => n.isCurrentStage);
+    if (startNode) {
+      nextStates[startNode.id] = "unlocked";
+    }
+
+    const safeGoals = currentGoals || new Set();
+    const safeCache = currentCache || {};
+    const safeStates = currentStates || nodeStates || {};
+
+    function walk(node) {
+      const state = nextStates[node.id] || "locked";
+
+      // Unlocks children if parent is active (not locked)
+      const isParentActive = state !== "locked";
+      const selection = node.isSelectionPoint ? currentSelections[node.id] : null;
+
+      for (const child of node.children) {
+        // 1. If parent is a selection point:
+        if (node.isSelectionPoint) {
+          const isSingleChild = node.children.length === 1;
+          if (selection && (isSingleChild || child.label === selection)) {
+            const nextState = "unlocked";
+            // Dynamically check if child is completed based on safeGoals checklist
+            const childContent = safeCache[child.id];
+            const childGoals = childContent?.goals || [];
+            if (childGoals.length > 0) {
+              const completedCount = childGoals.filter(g => safeGoals.has(g)).length;
+              if (completedCount === childGoals.length) {
+                nextStates[child.id] = "completed";
+              } else if (completedCount > 0) {
+                nextStates[child.id] = "in_progress";
+              } else {
+                nextStates[child.id] = nextState;
+              }
+            } else {
+              const oldState = safeStates[child.id] || "locked";
+              nextStates[child.id] = (oldState === "completed" || oldState === "in_progress") ? oldState : nextState;
+            }
+          } else {
+            nextStates[child.id] = "locked";
+          }
+        } 
+        // 2. If child is a selection point itself:
+        else if (child.isSelectionPoint) {
+          const childSelection = currentSelections[child.id];
+          if (childSelection) {
+            nextStates[child.id] = "completed";
+          } else {
+            nextStates[child.id] = isParentActive ? "unlocked" : "locked";
+          }
+        } 
+        // 3. If child is a checkpoint:
+        else if (child.isCheckpoint) {
+          nextStates[child.id] = isParentActive ? "completed" : "locked";
+        } 
+        // 4. Regular child node:
+        else {
+          const nextState = isParentActive ? "unlocked" : "locked";
+          if (nextState !== "locked") {
+            // Dynamically check if child is completed based on safeGoals checklist
+            const childContent = safeCache[child.id];
+            const childGoals = childContent?.goals || [];
+            if (childGoals.length > 0) {
+              const completedCount = childGoals.filter(g => safeGoals.has(g)).length;
+              if (completedCount === childGoals.length) {
+                nextStates[child.id] = "completed";
+              } else if (completedCount > 0) {
+                nextStates[child.id] = "in_progress";
+              } else {
+                nextStates[child.id] = nextState;
+              }
+            } else {
+              const oldState = safeStates[child.id] || "locked";
+              nextStates[child.id] = (oldState === "completed" || oldState === "in_progress") ? oldState : nextState;
+            }
+          } else {
+            nextStates[child.id] = "locked";
+          }
+        }
+
+        walk(child);
+      }
+    }
+
+    walk(root);
+    return nextStates;
+  }, [profile, nodeStates]);
+
+  const handleToggleGoal = useCallback((goalText) => {
+    setCompletedGoals(prev => {
+      const next = new Set(prev);
+      if (next.has(goalText)) {
+        next.delete(goalText);
+      } else {
+        next.add(goalText);
+      }
+      
+      const list = Array.from(next);
+      saveCompletedGoalsList(list);
+
+      // Propagate locks / unlocks downwards
+      const updatedStates = reevaluateStates(next, userSelections, nodeCache, nodeStates);
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+      return next;
+    });
+  }, [nodeCache, nodeStates, userSelections, reevaluateStates]);
+
+  const flatScaffold = useMemo(() => {
+    const root = buildMindmapScaffold(profile, nodeStates);
+    return flattenScaffold(root);
+  }, [profile, nodeStates]);
+
+  const handleSelectOption = useCallback((nodeId, option) => {
+    setUserSelections(prev => {
+      const next = { ...prev };
+      if (option === undefined) {
+        delete next[nodeId];
+      } else {
+        next[nodeId] = option;
+      }
+      saveUserSelections(next);
+
+      // Re-evaluate node states with the updated selections
+      setTimeout(() => {
+        setNodeStates(oldStates => {
+          const nextStates = reevaluateStates(completedGoals, next, nodeCache, oldStates);
+          if (option === undefined) {
+            nextStates[nodeId] = "unlocked";
+          } else {
+            nextStates[nodeId] = "completed";
+          }
+          saveNodeStates(nextStates);
+          return nextStates;
+        });
+      }, 0);
+
+      return next;
+    });
+  }, [completedGoals, nodeCache, reevaluateStates]);
+
+  // Eagerly pre-fetch content for any unlocked nodes in the background
+  useEffect(() => {
+    const fetchUnlockedContent = async () => {
+      const unfetchedUnlockedNodes = flatScaffold.filter(n => {
+        const state = (nodeStates || {})[n.id] || n.state;
+        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint;
+      });
+
+      if (unfetchedUnlockedNodes.length === 0) return;
+
+      for (const node of unfetchedUnlockedNodes) {
+        try {
+          const response = await fetch("/api/node-content", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              profile,
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeLabel: node.label,
+              parentNodeLabel: node.parentId ? (flatScaffold.find(p => p.id === node.parentId)?.label || "Parent Node") : "You Are Here",
+              allCompletedGoals: Array.from(completedGoals),
+              userSelections
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setNodeCache(prev => {
+              const updated = { ...prev, [node.id]: data };
+              saveNodeCache(updated);
+
+              // Trigger a re-evaluation of states with the new cache data
+              setTimeout(() => {
+                setNodeStates(oldStates => {
+                  const nextStates = reevaluateStates(completedGoals, userSelections, updated, oldStates);
+                  saveNodeStates(nextStates);
+                  return nextStates;
+                });
+              }, 0);
+
+              return updated;
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to eagerly fetch content for unlocked node ${node.id}`, e);
+        }
+      }
+    };
+
+    fetchUnlockedContent();
+  }, [flatScaffold, nodeStates, nodeCache, profile, completedGoals, userSelections, reevaluateStates]);
 
   const currentPhase = profile.onboardingPhase || 1;
   const phaseCompleted = useMemo(() => {
@@ -85,19 +308,28 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   }, [profile.stage]);
 
   const milestoneCount = getAllMilestones(roadmap).length;
+  
+  // Calculate progress statistics relative to the unlocked mindmap path
   const progressStats = useMemo(() => {
-    const baseStats = getProgressStats(roadmap, completedMilestones);
+    const root = buildMindmapScaffold(profile, nodeStates);
+    const mmStats = calculateProgress(root, nodeCache, nodeStates, completedGoals);
+    
+    // Add deep assessment progression if active
     if (!deepRoadmap || !deepRoadmap.weeklyStudyPlan || !deepRoadmap.weeklyStudyPlan.length) {
-      return baseStats;
+      return {
+        total: mmStats.totalCount || 1,
+        completed: mmStats.completedCount,
+        percentage: mmStats.percent,
+        byPhase: []
+      };
     }
 
     const deepWeeks = deepRoadmap.weeklyStudyPlan;
     const deepTotal = deepWeeks.length;
     const deepCompleted = deepWeeks.filter((w) => completedDeepWeeks.includes(w.week)).length;
-    const deepPercentage = deepTotal ? Math.round((deepCompleted / deepTotal) * 100) : 0;
 
-    const total = baseStats.total + deepTotal;
-    const completed = baseStats.completed + deepCompleted;
+    const total = (mmStats.totalCount || 0) + deepTotal;
+    const completed = mmStats.completedCount + deepCompleted;
     const percentage = total ? Math.round((completed / total) * 100) : 0;
 
     const byPhase = [
@@ -152,10 +384,11 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       const next = current.includes(weekId)
         ? current.filter((id) => id !== weekId)
         : [...current, weekId];
-      localStorage.setItem("career-gps:completed-deep-weeks", JSON.stringify(next));
+      saveCompletedDeepWeeks(next);
       return next;
     });
   };
+
 
   function updateTier(nextTier) {
     setFinancialTier(nextTier);
@@ -163,10 +396,11 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   }
 
   function handleReset() {
+    // clearCareerGpsStorage() now covers career-gps:completed-deep-weeks too
     clearCareerGpsStorage();
-    localStorage.removeItem("career-gps:completed-deep-weeks");
     onReset();
   }
+
 
   return (
     <GradientBackground
@@ -186,7 +420,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
               Goal direction: {formatGoalType(profile.goal.type)} - {profile.goal.description}
             </p>
           </div>
-          <div className="flex items-center gap-3 self-start">
+          <div className="flex flex-wrap items-center gap-3 self-start lg:self-center">
             <button
               className="focus-ring rounded-md bg-gradient-to-r from-[#28b7a5] to-emerald-600 px-4 py-2 text-sm font-semibold text-[#0b463b] hover:from-[#39cbba] hover:to-emerald-500 transition transform hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-emerald-200 print:hidden font-bold"
               type="button"
@@ -194,13 +428,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             >
               Journey Timeline
             </button>
-            <button
-              className="focus-ring rounded-md bg-gradient-to-r from-[#28b7a5] to-emerald-600 px-4 py-2 text-sm font-semibold text-[#0b463b] hover:from-[#39cbba] hover:to-emerald-500 transition transform hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-emerald-200 print:hidden font-bold"
-              type="button"
-              onClick={onViewDecisionTree}
-            >
-              Decision Tree
-            </button>
+
             <button
               className="focus-ring rounded-md bg-gradient-to-r from-violet-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white hover:from-violet-400 hover:to-purple-500 transition transform hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-purple-200 print:hidden font-bold"
               type="button"
@@ -324,8 +552,15 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             saveDeepRoadmap={saveDeepRoadmap}
             setCompletedDeepWeeks={setCompletedDeepWeeks}
             phaseCompleted={phaseCompleted}
+            currentPhase={currentPhase}
             resumeAnalysis={resumeAnalysis}
             setResumeAnalysis={setResumeAnalysis}
+            completedGoals={completedGoals}
+            onToggleGoal={handleToggleGoal}
+            nodeCache={nodeCache}
+            nodeStates={nodeStates}
+            userSelections={userSelections}
+            onSelectOption={handleSelectOption}
           />
         </section>
 
@@ -345,6 +580,8 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
           onClose={() => setShowWizard(false)}
         />
       )}
+
+
 
     </GradientBackground>
   );
@@ -452,11 +689,15 @@ function ActiveSection({
   setDeepRoadmap,
   saveDeepRoadmap,
   setCompletedDeepWeeks,
-  currentPhase,
-  setShowReOnboard,
   phaseCompleted,
   resumeAnalysis,
   setResumeAnalysis,
+  completedGoals,
+  onToggleGoal,
+  nodeCache,
+  nodeStates,
+  userSelections,
+  onSelectOption,
 }) {
   const [deepTab, setDeepTab] = useState("study");
 
@@ -510,7 +751,34 @@ function ActiveSection({
       />
     );
   }
-  if (activeSection === "skills") return <SkillMap skillGap={roadmap.skillGap} profile={profile} completedMilestones={completedMilestones} resumeAnalysis={resumeAnalysis} />;
+  if (activeSection === "skills") {
+    const need = [];
+    const rootScaffold = buildMindmapScaffold(profile, nodeStates);
+    const flatScaffold = flattenScaffold(rootScaffold);
+    
+    flatScaffold.forEach(node => {
+      const state = (nodeStates || {})[node.id] || node.state;
+      if (state !== "locked") {
+        const content = (nodeCache || {})[node.id];
+        if (content && content.skills) {
+          content.skills.forEach(skill => {
+            need.push({ skill, milestoneId: node.id });
+          });
+        }
+      }
+    });
+
+    const dynamicSkillGap = {
+      have: profile.skills || [],
+      need,
+      bridgingSteps: roadmap.skillGap?.bridgingSteps || [
+        "Follow the active mindmap milestone objectives.",
+        "Practice target technical skills daily."
+      ]
+    };
+
+    return <SkillMap skillGap={dynamicSkillGap} profile={profile} completedMilestones={completedMilestones} resumeAnalysis={resumeAnalysis} />;
+  }
   if (activeSection === "resume") return <ResumeAnalyzer profile={profile} onAnalysisComplete={setResumeAnalysis} />;
   if (activeSection === "market") return <MarketIntelligence profile={profile} />;
   if (activeSection === "chat") return <CareerChat profile={profile} />;
@@ -776,68 +1044,754 @@ function ActiveSection({
   return (
     <Goals
       profile={profile}
-      roadmap={roadmap}
-      completedMilestones={completedMilestones}
-      onToggleMilestone={onToggleMilestone}
-      currentPhase={currentPhase}
-      setShowReOnboard={setShowReOnboard}
-      phaseCompleted={phaseCompleted}
+      completedGoals={completedGoals}
+      onToggleGoal={onToggleGoal}
+      nodeCache={nodeCache}
+      nodeStates={nodeStates}
+      userSelections={userSelections}
+      onSelectOption={onSelectOption}
     />
   );
 }
 
-function Goals({ profile, roadmap, completedMilestones, onToggleMilestone }) {
-  const milestones = roadmap.goalsToAchieve?.milestones || [];
+function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, userSelections, onSelectOption }) {
+  const [tooltip, setTooltip] = useState(null);
+  const [selBoard, setSelBoard] = useState("");
+  const [selStream, setSelStream] = useState("");
+  const [selTier, setSelTier] = useState("");
+  const [selUgCourse, setSelUgCourse] = useState("");
+  const [expandedSelId, setExpandedSelId] = useState(null);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState(() => new Set());
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wizardOpenNodeId, setWizardOpenNodeId] = useState(null);
+  const [manuallyClosedId, setManuallyClosedId] = useState(null);
 
-  const getFullMilestoneIndex = (milestoneId) => {
-    return milestones.findIndex(ms => ms.id === milestoneId);
+  const toggleNodeCollapsed = (nodeId) => {
+    setCollapsedNodeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
   };
 
-  const isMilestoneDisabled = (milestoneId) => {
-    const idx = getFullMilestoneIndex(milestoneId);
-    if (idx <= 0) return false;
+  const scaffold = buildMindmapScaffold(profile, nodeStates);
+  const flatNodes = flattenScaffold(scaffold);
+
+  // Filter nodes that are unlocked/in progress/completed and have content goals loaded
+  const activeNodes = flatNodes.filter(n => {
+    const state = (nodeStates || {})[n.id] || n.state;
+    if (state === "locked") return false;
+    // Skip checkpoints and choice/selection points completely from the checklist list
+    if (n.isCheckpoint || n.isSelectionPoint || n.type === "selection") return false;
+    const content = (nodeCache || {})[n.id];
+    return content && content.goals && content.goals.length > 0;
+  });
+
+  // Filter nodes for display in the Goals tab - include checkpoints but skip choice/selection points
+  const nodesForGoalsList = flatNodes.filter(n => {
+    const state = (nodeStates || {})[n.id] || n.state;
+    if (state === "locked") return false;
+    if (n.isSelectionPoint || n.type === "selection") return false;
+    if (n.isCheckpoint || n.type === "checkpoint") return true;
+    const content = (nodeCache || {})[n.id];
+    return content && content.goals && content.goals.length > 0;
+  });
+
+  // Check if all preceding goals in unlocked stages are completed
+  const allPrecedingGoalsCompleted = activeNodes.every(n => {
+    const content = (nodeCache || {})[n.id];
+    const goalsList = content?.goals || [];
+    return goalsList.every(g => completedGoals.has(g));
+  });
+
+  // Auto-open choice wizard modal when selection nodes unlock and preceding goals are complete
+  useEffect(() => {
+    const activeSelNode = flatNodes.find(n => {
+      if (!n.isSelectionPoint) return false;
+      const state = (nodeStates || {})[n.id] || n.state;
+      return state === "unlocked" || state === "in_progress";
+    });
     
-    // All preceding milestones in the full list must be completed
-    for (let i = 0; i < idx; i++) {
-      if (!completedMilestones.has(milestones[i].id)) return true;
+    if (activeSelNode && allPrecedingGoalsCompleted && !(userSelections || {})[activeSelNode.id] && manuallyClosedId !== activeSelNode.id) {
+      // Only set wizard state and reset step if it's not already open for this node
+      if (wizardOpenNodeId !== activeSelNode.id) {
+        setWizardOpenNodeId(activeSelNode.id);
+        setWizardStep(1);
+      }
+    } else if (!activeSelNode || !allPrecedingGoalsCompleted) {
+      setWizardOpenNodeId(null);
     }
-    
-    return false;
+  }, [nodeStates, allPrecedingGoalsCompleted, userSelections, manuallyClosedId, flatNodes, wizardOpenNodeId]);
+
+  const handleMouseEnter = (e, text) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      text,
+      x: rect.left + window.scrollX + 25,
+      y: rect.top + window.scrollY - 30
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setTooltip(null);
   };
 
   return (
-    <div className="grid gap-5 animate-fade-in">
-      <Panel className="border-l-4 border-l-ocean">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-100 pb-5">
-          <SectionHeader 
-            kicker="Current Pathway" 
-            title="Goals to Achieve" 
-            description={roadmap.goalsToAchieve?.description || "Follow your personalized roadmap step-by-step to reach your objective."} 
-          />
-        </div>
+    <div className="grid gap-6 animate-fade-in relative">
+      <Panel className="border-l-4 border-l-emerald-500">
+        <SectionHeader
+          kicker="Milestone Goals"
+          title="Goals to Achieve"
+          description="Complete individual stage objectives to unlock future nodes on your Career Mindmap."
+        />
 
-        <div className="mt-6 grid gap-4">
-          {milestones.length > 0 ? (
-            milestones.map((milestone) => {
-              const fullIdx = getFullMilestoneIndex(milestone.id);
+        <div className="mt-6 space-y-6">
+          {nodesForGoalsList.length > 0 ? (
+            nodesForGoalsList.map((node) => {
+              const content = (nodeCache || {})[node.id];
+              const goals = content?.goals || [];
+              const achievements = content?.achievements || [];
+              const goalReasons = content?.goal_reasons || {};
+              const nodeState = (nodeStates || {})[node.id] || node.state;
+              const isCollapsed = collapsedNodeIds.has(node.id);
+
+              const isCheckpoint = node.isCheckpoint || node.type === "checkpoint";
+
+              if (isCheckpoint) {
+                return (
+                  <div key={node.id} className="border border-amber-200/80 rounded-2xl bg-amber-50/5 shadow-sm flex flex-col overflow-hidden transition-all duration-300">
+                    {/* Collapsible Header */}
+                    <div 
+                      onClick={() => toggleNodeCollapsed(node.id)}
+                      className="flex items-center justify-between p-5 cursor-pointer hover:bg-amber-55/40 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div 
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-amber-500"
+                        />
+                        <span className="font-extrabold text-sm text-slate-800">{node.label}</span>
+                        <span className="text-[10px] text-amber-700 bg-amber-100 border border-amber-200/80 font-semibold px-2 py-0.5 rounded-full">
+                          ⭐ Milestone Checkpoint
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-emerald-800 font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/60">
+                          Reached ✓
+                        </span>
+                        
+                        <span className={`text-slate-400 font-bold transition-transform duration-200 text-[10px] shrink-0 ${isCollapsed ? "" : "rotate-180"}`}>
+                          ▼
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dropdown collapsible list container */}
+                    <div className={`transition-all duration-300 ease-in-out border-t border-amber-100/40 ${isCollapsed ? "max-h-0 opacity-0 pointer-events-none" : "max-h-[1000px] opacity-100 p-5 pt-4 bg-amber-50/5"}`}>
+                      <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+                        {content?.summary || `You have reached the ${node.label} stage in your career path. Review your milestone achievements below.`}
+                      </p>
+                      
+                      <div className="grid gap-3">
+                        {achievements.length > 0 ? (
+                          achievements.map((ach, idx) => (
+                            <div 
+                              key={idx}
+                              className="flex items-start gap-3.5 p-3.5 rounded-xl border border-amber-250/70 bg-white text-slate-800 shadow-sm"
+                            >
+                              <span className="text-amber-500 text-sm mt-0.5 flex-shrink-0">⭐</span>
+                              <div className="flex-1 text-xs leading-relaxed font-semibold">
+                                {ach}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-4 bg-white border border-slate-100 rounded-xl">
+                            <p className="text-xs text-slate-400 italic">No achievements generated yet. Open this node on the mindmap to compile your achievements narrative.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Normal goals node rendering
+              const completedCount = goals.filter(g => completedGoals.has(g)).length;
+              const totalCount = goals.length;
+
               return (
-                <div key={milestone.id} className="relative">
-                  <MilestoneCard
-                    milestone={milestone}
-                    index={fullIdx}
-                    disabled={isMilestoneDisabled(milestone.id)}
-                    checked={completedMilestones.has(milestone.id)}
-                    onToggle={onToggleMilestone}
-                    completedMilestones={completedMilestones}
-                  />
+                <div key={node.id} className="border border-slate-200/85 rounded-2xl bg-white shadow-sm flex flex-col overflow-hidden transition-all duration-300">
+                  {/* Collapsible Header */}
+                  <div 
+                    onClick={() => toggleNodeCollapsed(node.id)}
+                    className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50/50 transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div 
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse"
+                        style={{ background: node.color }}
+                      />
+                      <span className="font-extrabold text-sm text-slate-800">{node.label}</span>
+                      <span className="text-[10px] text-slate-500 font-semibold px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">
+                        {node.timeframe}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Progress Summary Pill */}
+                      <span className="text-[10px] text-slate-500 font-bold px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200/60">
+                        {completedCount} of {totalCount} goals
+                      </span>
+                      
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        nodeState === "completed" 
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                          : "bg-blue-100 text-blue-800 border border-blue-200"
+                      }`}>
+                        {nodeState}
+                      </span>
+
+                      {/* Dropdown Chevron indicator */}
+                      <span className={`text-slate-400 font-bold transition-transform duration-200 text-[10px] shrink-0 ${isCollapsed ? "" : "rotate-180"}`}>
+                        ▼
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dropdown collapsible list container */}
+                  <div className={`transition-all duration-300 ease-in-out border-t border-slate-100/60 ${isCollapsed ? "max-h-0 opacity-0 pointer-events-none" : "max-h-[1000px] opacity-100 p-5 pt-4 bg-slate-50/10"}`}>
+                    <div className="grid gap-3">
+                      {goals.map((goal, idx) => {
+                        const isChecked = completedGoals.has(goal);
+                        const whyReason = goalReasons[goal] || "This helps build target career capabilities.";
+
+                        return (
+                          <div 
+                            key={idx}
+                            onClick={() => onToggleGoal(goal)}
+                            className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none ${
+                              isChecked 
+                                ? "bg-emerald-50/20 border-emerald-250 text-slate-800" 
+                                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              readOnly={true}
+                              className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                            />
+                            <div className="flex-1 text-sm leading-relaxed">
+                              {goal}
+                            </div>
+                            
+                            <button
+                              onClick={(e) => e.stopPropagation()} // Stop event bubbling so lightbulb click doesn't toggle completion
+                              onMouseEnter={(e) => handleMouseEnter(e, whyReason)}
+                              onMouseLeave={handleMouseLeave}
+                              className="text-slate-400 hover:text-amber-500 transition-colors p-0.5 flex-shrink-0"
+                              aria-label="Why this matters"
+                            >
+                              💡
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               );
             })
           ) : (
-            <p className="text-sm text-slate-500 py-8 text-center italic">No milestones found.</p>
+            <div className="text-center py-10">
+              <span className="text-3xl">🧭</span>
+              <p className="text-sm text-slate-500 mt-2 font-medium">No unlocked stages found with checklist goals.</p>
+              <p className="text-xs text-slate-400 mt-1">Visit the Career Mindmap first to load your starting path nodes.</p>
+            </div>
           )}
+
+          {/* Guided Branch/Option Selection Cards / Banners */}
+          {(() => {
+            // Find any active/unlocked selection node in flatNodes
+            const activeSelNodes = flatNodes.filter(n => {
+              if (!n.isSelectionPoint) return false;
+              const state = (nodeStates || {})[n.id] || n.state;
+              return state === "unlocked" || state === "in_progress";
+            });
+
+            // Find any completed selections to show as history/read-only with reset button
+            const doneSelNodes = flatNodes.filter(n => {
+              if (!n.isSelectionPoint) return false;
+              const state = (nodeStates || {})[n.id] || n.state;
+              return state === "completed" && (userSelections || {})[n.id];
+            });
+
+            // Recommended calculations based on profile
+            const fieldType = profile.field?.type || "TECH";
+            let recUg = "B.Tech / B.E. (Computer Science/IT)";
+            if (fieldType === "SCIENCE") recUg = "B.Sc (Sciences/Biotech)";
+            else if (fieldType === "COMMERCE") recUg = "B.Com / BBA (Business/Finance)";
+            else if (fieldType === "LAW" || fieldType === "ARTS") recUg = "BA (Arts/Humanities/Law)";
+            else if (fieldType === "MEDICINE") recUg = "MBBS / BDS (Medicine)";
+
+            let recPg = "→ Enter Workforce";
+            if (profile.goal?.type === "HIGHER_STUDIES") recPg = "→ Masters Degree";
+
+            let recPgCourse = "M.Tech / MS (Computer Science/IT)";
+            if (fieldType === "SCIENCE") recPgCourse = "M.Sc (Sciences)";
+            else if (fieldType === "COMMERCE") recPgCourse = "MBA (Management/Finance)";
+            else if (fieldType === "LAW" || fieldType === "ARTS") recPgCourse = "MA (Arts/Humanities/Law)";
+
+            // Check if all preceding goals in unlocked stages are completed
+            const allPrecedingGoalsCompleted = activeNodes.every(n => {
+              const content = (nodeCache || {})[n.id];
+              const goalsList = content?.goals || [];
+              return goalsList.every(g => completedGoals.has(g));
+            });
+
+            return (
+              <div className="mt-8 space-y-6 pt-6 border-t border-slate-200/60">
+                {/* ── UNLOCKED / ACTIVE SELECTIONS WIZARD TRIGGER BANNER ── */}
+                {allPrecedingGoalsCompleted && activeSelNodes.map(node => {
+                  const isOpen = wizardOpenNodeId === node.id;
+                  if (isOpen) return null; // If open as a modal, don't show the banner
+                  
+                  return (
+                    <div 
+                      key={node.id} 
+                      className="border border-cyan-200 bg-gradient-to-r from-cyan-50/20 to-sky-50/10 p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in"
+                    >
+                      <div className="flex gap-3">
+                        <span className="text-2xl mt-0.5">🧭</span>
+                        <div>
+                          <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
+                          <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
+                            {node.id === "node-board-select" && "Choose your Educational Board & high-school Stream to unlock the next phase milestones."}
+                            {node.id === "node-ug-select" && "Choose your College Tier & UG Course specialization to unlock college semester goals."}
+                            {node.id === "node-postgrad-select" && "Select your post-graduation pathway (Job Placement vs Master's specialization)."}
+                            {node.id === "node-masters-select" && "Choose your Master's course specialization to unlock the PG path goals."}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          setWizardOpenNodeId(node.id);
+                          setWizardStep(1);
+                          setManuallyClosedId(null);
+                        }}
+                        className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all shrink-0 w-full sm:w-auto text-center"
+                      >
+                        Choose Board & Stream
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* ── ONBOARDING WIZARD MODAL OVERLAY ── */}
+                {(() => {
+                  const wizardNode = flatNodes.find(n => n.id === wizardOpenNodeId);
+                  if (!wizardOpenNodeId || !wizardNode) return null;
+
+                  return (
+                    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[2000] flex items-center justify-center p-4 animate-fade-in">
+                      <div 
+                        className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-scale-up"
+                        style={{ fontFamily: "'Inter', sans-serif" }}
+                      >
+                        {/* Modal Header */}
+                        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">🧭</span>
+                            <div>
+                              <span className="text-[10px] font-extrabold text-cyan-600 uppercase tracking-wider">Onboarding Choice Step</span>
+                              <h2 className="font-extrabold text-base text-slate-900 mt-0.5">{wizardNode.label}</h2>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setManuallyClosedId(wizardNode.id);
+                              setWizardOpenNodeId(null);
+                            }}
+                            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-200/50 transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 flex-1 overflow-y-auto max-h-[60vh] space-y-6">
+                          {/* Step Indicators */}
+                          {wizardNode.id === "node-board-select" && (
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 1 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 2 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                            </div>
+                          )}
+                          {wizardNode.id === "node-ug-select" && (
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 1 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                              <span className={`h-2 flex-1 rounded-full ${wizardStep >= 2 ? "bg-cyan-600" : "bg-slate-200"}`} />
+                            </div>
+                          )}
+
+                          {/* WIZARD FLOW: BOARD SELECTION */}
+                          {wizardNode.id === "node-board-select" && (
+                            <div className="space-y-4">
+                              {wizardStep === 1 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 1: Select Your Board</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Choose the educational board you want to pursue for your high school studies.</p>
+                                  </div>
+                                  
+                                  <div className="grid gap-3">
+                                    {[
+                                      { value: "CBSE", title: "CBSE Board", desc: "Central Board of Secondary Education. Standardized curriculum, ideal for competitive prep." },
+                                      { value: "State Board (Inter)", title: "State Board / Intermediate", desc: "Region-specific curriculum, focused on state university tracks." },
+                                      { value: "Polytechnic Diploma", title: "Polytechnic Diploma", desc: "A technical/vocational pathway leading directly into practical domains." }
+                                    ].map(opt => (
+                                      <button
+                                        key={opt.value}
+                                        onClick={() => {
+                                          setSelBoard(opt.value);
+                                          if (opt.value === "Polytechnic Diploma") {
+                                            setSelStream(""); // Diploma has no high-school streams
+                                          }
+                                        }}
+                                        className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full ${
+                                          selBoard === opt.value
+                                            ? "border-cyan-600 bg-cyan-50/20 shadow-md shadow-cyan-650/5"
+                                            : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
+                                        }`}
+                                      >
+                                        <span className={`text-sm font-extrabold ${selBoard === opt.value ? "text-cyan-900" : "text-slate-800"}`}>
+                                          {opt.title}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-normal leading-normal">
+                                          {opt.desc}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {wizardStep === 2 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 2: Select Your Stream (Branch)</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Select your specialized branch for {selBoard}. This will unlock stream-specific subjects.</p>
+                                  </div>
+
+                                  <div className="grid gap-3">
+                                    {[
+                                      { value: "Science (PCM/B)", title: "Science Stream (PCM/B)", desc: "Physics, Chemistry, Mathematics, Biology. Prepares for engineering, medicine, and research." },
+                                      { value: "Commerce", title: "Commerce Stream", desc: "Accountancy, Business Studies, Economics. Prepares for finance, business, entrepreneurship, and CA." },
+                                      { value: "Arts/Humanities", title: "Arts & Humanities Stream", desc: "History, Geography, Political Science, Psychology. Prepares for humanities, law, design, and UPSC." }
+                                    ].map(opt => (
+                                      <button
+                                        key={opt.value}
+                                        onClick={() => setSelStream(opt.value)}
+                                        className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full ${
+                                          selStream === opt.value
+                                            ? "border-cyan-600 bg-cyan-50/20 shadow-md shadow-cyan-650/5"
+                                            : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
+                                        }`}
+                                      >
+                                        <span className={`text-sm font-extrabold ${selStream === opt.value ? "text-cyan-900" : "text-slate-800"}`}>
+                                          {opt.title}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-normal leading-normal">
+                                          {opt.desc}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* WIZARD FLOW: UG SELECTION */}
+                          {wizardNode.id === "node-ug-select" && (
+                            <div className="space-y-4">
+                              {wizardStep === 1 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 1: Select College Tier Joined</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Select the classification tier of the college you joined for undergraduate studies.</p>
+                                  </div>
+                                  
+                                  <div className="grid gap-3">
+                                    {[
+                                      { value: "Tier 1", title: "Tier 1 College", desc: "Top Tier national institutions (IITs, NITs, BITS, Top Universities). Highly selective." },
+                                      { value: "Tier 2", title: "Tier 2 College", desc: "Established state government universities and reputable private engineering/degree colleges." },
+                                      { value: "Tier 3", title: "Tier 3 College", desc: "Local affiliated colleges and regional teaching colleges." }
+                                    ].map(opt => (
+                                      <button
+                                        key={opt.value}
+                                        onClick={() => setSelTier(opt.value)}
+                                        className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full ${
+                                          selTier === opt.value
+                                            ? "border-cyan-600 bg-cyan-50/20 shadow-md shadow-cyan-650/5"
+                                            : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
+                                        }`}
+                                      >
+                                        <span className={`text-sm font-extrabold ${selTier === opt.value ? "text-cyan-900" : "text-slate-800"}`}>
+                                          {opt.title}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-normal leading-normal">
+                                          {opt.desc}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {wizardStep === 2 && (
+                                <div className="space-y-4 animate-fade-in">
+                                  <div className="mb-2">
+                                    <h4 className="text-sm font-extrabold text-slate-800">Step 2: Select UG Degree Course</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Select the course you are enrolled in. The recommended option is highlighted based on your profile.</p>
+                                  </div>
+
+                                  <div className="flex flex-col gap-3">
+                                    {[
+                                      { value: "B.Tech / B.E. (Computer Science/IT)", title: "B.Tech / B.E. (Computer Science/IT)", desc: "Core software engineering, algorithms, computing architecture." },
+                                      { value: "B.Sc (Sciences/Biotech)", title: "B.Sc (Sciences/Biotech)", desc: "Scientific principles, life sciences, chemical/biological disciplines." },
+                                      { value: "B.Com / BBA (Business/Finance)", title: "B.Com / BBA (Business/Finance)", desc: "Corporate management, accounts, micro/macro economics." },
+                                      { value: "BA (Arts/Humanities/Law)", title: "BA (Arts/Humanities/Law)", desc: "Humanities studies, corporate/IP law, design tracks." },
+                                      { value: "MBBS / BDS (Medicine)", title: "MBBS / BDS (Medicine)", desc: "Clinical practice, surgical fundamentals, biology core." }
+                                    ].map(opt => {
+                                      const isRecommended = opt.value.toLowerCase().includes(recUg.split(" ")[0].toLowerCase().replace("b.tech", "b.tech").replace("b.sc", "b.sc").replace("b.com", "b.com").slice(0,6));
+                                      return (
+                                        <button
+                                          key={opt.value}
+                                          onClick={() => setSelUgCourse(opt.value)}
+                                          className={`p-4 rounded-2xl border text-left transition-all flex flex-col gap-1 w-full relative ${
+                                            selUgCourse === opt.value
+                                              ? "border-cyan-600 bg-cyan-50/20 shadow-md"
+                                              : "border-slate-200 bg-white hover:border-slate-350 hover:bg-slate-50/30"
+                                          }`}
+                                        >
+                                          <div className="flex justify-between items-center w-full">
+                                            <span className={`text-sm font-extrabold ${selUgCourse === opt.value ? "text-cyan-950" : "text-slate-805"}`}>
+                                              {opt.title}
+                                            </span>
+                                            {isRecommended && (
+                                              <span className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                                                selUgCourse === opt.value 
+                                                  ? "bg-cyan-700 border-cyan-500 text-cyan-100" 
+                                                  : "bg-amber-100 border-amber-250 text-amber-800"
+                                              }`}>
+                                                Recommended ⭐
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-xs text-slate-500 font-normal leading-normal">
+                                            {opt.desc}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* WIZARD FLOW: POSTGRAD WORKFORCE vs MASTERS */}
+                          {wizardNode.id === "node-postgrad-select" && (
+                            <div className="space-y-4 animate-fade-in">
+                              <div className="mb-2">
+                                <h4 className="text-sm font-extrabold text-slate-800">Select Post-Graduation Pathway</h4>
+                                <p className="text-xs text-slate-500 mt-1">Select whether you want to enter the workforce directly or specialize with a Master's degree.</p>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {[
+                                  { value: "→ Enter Workforce", title: "Enter Workforce", desc: "Pivot directly into target industry associate roles, placements, and client projects.", action: "Secure Job Placement" },
+                                  { value: "→ Masters Degree", title: "Master's Degree", desc: "Pursue post-graduate studies (M.Tech/MBA/M.Sc) to gain specialized depth.", action: "Higher Specialization" }
+                                ].map(opt => {
+                                  const isRecommended = opt.value === recPg;
+                                  return (
+                                    <button
+                                      key={opt.value}
+                                      onClick={() => {
+                                        onSelectOption(wizardNode.id, opt.value);
+                                        setWizardOpenNodeId(null);
+                                      }}
+                                      className="p-5 rounded-2xl border text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition-all flex flex-col justify-between h-[180px] group"
+                                    >
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between items-center w-full">
+                                          <span className="text-sm font-extrabold text-slate-800 group-hover:text-cyan-600">{opt.title}</span>
+                                          {isRecommended && (
+                                            <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-250 text-amber-800 px-2 py-0.5 rounded-full">
+                                              Recommended ⭐
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-slate-500 leading-normal font-normal">
+                                          {opt.desc}
+                                        </p>
+                                      </div>
+                                      <span className="text-[10px] font-extrabold text-cyan-600 group-hover:text-cyan-700 tracking-wider uppercase mt-4">
+                                        {opt.action} →
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* WIZARD FLOW: MASTERS SPECIALIZATION */}
+                          {wizardNode.id === "node-masters-select" && (
+                            <div className="space-y-4 animate-fade-in">
+                              <div className="mb-2">
+                                <h4 className="text-sm font-extrabold text-slate-800">Choose Master's Specialization</h4>
+                                <p className="text-xs text-slate-500 mt-1">Select your specialized post-graduate course pathway. Recommended based on UG background.</p>
+                              </div>
+
+                              <div className="flex flex-col gap-3">
+                                {[
+                                  { value: "M.Tech / MS (Computer Science/IT)", title: "M.Tech / MS (Computer Science/IT)", desc: "Advanced systems engineering, algorithms, AI/ML specialization." },
+                                  { value: "MBA (Management/Finance)", title: "MBA (Business/Finance)", desc: "Corporate strategy, financial modeling, organizational leadership." },
+                                  { value: "M.Sc (Sciences)", title: "M.Sc (Advanced Sciences)", desc: "Advanced scientific research, biotechnology lab specialties." },
+                                  { value: "MA (Arts/Humanities/Law)", title: "MA (Humanities/IP Law)", desc: "IP law, legal litigation, media, creative communications." }
+                                ].map(opt => {
+                                  const isRecommended = opt.value === recPgCourse;
+                                  return (
+                                    <button
+                                      key={opt.value}
+                                      onClick={() => {
+                                        onSelectOption(wizardNode.id, opt.value);
+                                        setWizardOpenNodeId(null);
+                                      }}
+                                      className="p-4 rounded-2xl border text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition-all flex justify-between items-center w-full"
+                                    >
+                                      <div>
+                                        <span className="text-sm font-extrabold text-slate-800">{opt.title}</span>
+                                        <p className="text-xs text-slate-500 mt-1 font-normal">{opt.desc}</p>
+                                      </div>
+                                      {isRecommended && (
+                                        <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-255 text-amber-800 px-2 py-0.5 rounded-full shrink-0">
+                                          Recommended ⭐
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        {((wizardNode.id === "node-board-select" && wizardStep === 2) || 
+                          (wizardNode.id === "node-board-select" && selBoard === "Polytechnic Diploma") ||
+                          (wizardNode.id === "node-ug-select" && wizardStep === 2)) && (
+                          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center gap-3">
+                            <button
+                              onClick={() => setWizardStep(1)}
+                              className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl transition"
+                            >
+                              ← Back
+                            </button>
+                            <button
+                              disabled={
+                                (wizardNode.id === "node-board-select" && selBoard !== "Polytechnic Diploma" && !selStream) ||
+                                (wizardNode.id === "node-ug-select" && !selUgCourse)
+                              }
+                              onClick={() => {
+                                if (wizardNode.id === "node-board-select") {
+                                  const val = selBoard === "Polytechnic Diploma" ? selBoard : `${selBoard} - ${selStream}`;
+                                  onSelectOption(wizardNode.id, val);
+                                } else if (wizardNode.id === "node-ug-select") {
+                                  onSelectOption(wizardNode.id, `${selTier} - ${selUgCourse}`);
+                                }
+                                setWizardOpenNodeId(null);
+                              }}
+                              className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+                            >
+                              Confirm & Unlock Pathway
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Next button for Step 1 in multi-step wizard */}
+                        {((wizardNode.id === "node-board-select" && wizardStep === 1 && selBoard && selBoard !== "Polytechnic Diploma") || 
+                          (wizardNode.id === "node-ug-select" && wizardStep === 1 && selTier)) && (
+                          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                            <button
+                              onClick={() => setWizardStep(2)}
+                              className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+                            >
+                              Continue Step 2 →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── COMPLETED / HISTORIC SELECTIONS ── */}
+                {doneSelNodes.length > 0 && (
+                  <div className="space-y-3 mt-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Locked Selections & Pathways</p>
+                    <div className="grid gap-2.5">
+                      {doneSelNodes.map(node => (
+                        <div key={node.id} className="border border-slate-200/80 rounded-xl p-3.5 bg-slate-50 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-emerald-600 text-xs font-bold">✓</span>
+                            <div>
+                              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">{node.label}: </span>
+                              <span className="text-xs font-bold text-slate-800">{userSelections[node.id]}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Do you want to change your selection for "${node.label}"? This will re-lock downstream milestones.`)) {
+                                onSelectOption(node.id, undefined);
+                              }
+                            }}
+                            className="text-[10px] font-extrabold text-slate-400 hover:text-rose-600 transition uppercase tracking-wider"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </Panel>
+
+      {/* Floating fixed portal tooltip */}
+      {tooltip && (
+        <div
+          className="fixed bg-slate-900 border border-slate-800 text-white rounded-xl shadow-2xl p-3.5 max-w-[280px] z-[9999] text-xs leading-normal animate-fadeIn flex gap-2.5 items-start"
+          style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
+        >
+          <span className="text-amber-400 mt-0.5">💡</span>
+          <div>
+            <p className="font-bold text-slate-400 mb-0.5">Why This Matters</p>
+            <p className="text-slate-200">{tooltip.text}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

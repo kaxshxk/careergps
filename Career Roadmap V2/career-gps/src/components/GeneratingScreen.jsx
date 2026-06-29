@@ -41,7 +41,7 @@ export default function GeneratingScreen() {
         </div>
 
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-400/80">Mapping your path</p>
-        <h1 className="mt-3 text-3xl font-extrabold text-white md:text-4xl">Building your first roadmap</h1>
+        <h1 className="mt-3 text-3xl font-extrabold text-white md:text-4xl">Building your personalized roadmap...</h1>
 
         {/* Rotating motivational phrase */}
         <p

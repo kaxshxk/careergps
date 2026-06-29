@@ -16,26 +16,39 @@ function cleanGeminiJsonResponse(text) {
   return cleaned.trim();
 }
 
-dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../.env') });
+// ESM equivalent of __filename / __dirname (module-scoped so all routes can use them)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const upload = multer({ storage: multer.memoryStorage() });
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are supported for resume analysis."), false);
+    }
+  }
+});
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_ACTUAL_GEMINI_API_KEY") {
+  throw new Error("GEMINI_API_KEY is not configured. Set it in your .env file before starting the server.");
+}
 // The user asked to use gemini-3.1-flash, or a similar standard model name.
 // We default to "gemini-2.5-flash" (or "gemini-1.5-flash" if 2.5-flash is not available).
 // This env variable allows the user to override the model if they want (e.g. to gemini-1.5-flash or gemini-2.5-flash).
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-if (!GEMINI_API_KEY) {
-  console.warn("WARNING: GEMINI_API_KEY is not defined in the environment variables!");
-  console.warn("Please create a .env file and set GEMINI_API_KEY=your_actual_api_key.");
-}
-
-const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Programmatically build the decision tree nodes linearly from milestones to ensure absolute Zod compliance
 function buildTreeFromGoals(goalText, goalsToAchieve, collegeCourses, internships, certifications, alternatePaths) {
@@ -496,6 +509,14 @@ function normalizeRoadmapData(data, expectedTimeframes = []) {
     }
     if (!Array.isArray(data.skillGap.bridgingSteps)) {
       data.skillGap.bridgingSteps = ["Explore related courses and study daily."];
+    } else {
+      // Bug #17 fix: filter empty strings so Zod min(1) per-item check doesn't fail
+      data.skillGap.bridgingSteps = data.skillGap.bridgingSteps.filter(
+        (s) => typeof s === "string" && s.trim().length > 0
+      );
+      if (data.skillGap.bridgingSteps.length === 0) {
+        data.skillGap.bridgingSteps = ["Explore related courses and study daily."];
+      }
     }
     if (Array.isArray(data.skillGap.need)) {
       // Collect valid milestone IDs from goalsToAchieve to ensure matching
@@ -570,9 +591,10 @@ function normalizeRoadmapData(data, expectedTimeframes = []) {
 }
 
 app.post("/api/generate-roadmap", async (req, res) => {
+  // Bug #12 fix: declare profile OUTSIDE the try block so the catch handler
+  // can safely reference it without throwing a secondary TypeError.
+  const profile = req.body;
   try {
-    const profile = req.body;
-    
     // Quick validation of the profile object structure
     if (!profile || !profile.name || !profile.goal || !profile.goal.description) {
       return res.status(400).json({ error: "Invalid profile data provided. Profile name and goal description are required." });
@@ -992,7 +1014,20 @@ app.post("/api/suggest-skills", async (req, res) => {
   }
 });
 
-app.post("/api/analyze-resume", upload.single("resume"), async (req, res) => {
+app.post("/api/analyze-resume", (req, res, next) => {
+  upload.single("resume")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: "File size limit exceeded. Max size allowed is 10MB." });
+        }
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const file = req.file;
     const profile = JSON.parse(req.body.profile || "{}");
@@ -1192,7 +1227,8 @@ Your output must be a single, raw, valid JSON object matching the exact structur
 ### JSON Structure Casing:
 {
   "demandLevel": "HIGH", // Options: "LOW", "MEDIUM", "HIGH", "VERY_HIGH"
-  "avgSalary": "₹6,0,000 - ₹12,0,000 per annum", // or equivalent local salary range
+  // Bug #13 fix: corrected salary format (₹6,00,000 not ₹6,0,000)
+  "avgSalary": "₹6,00,000 - ₹12,00,000 per annum", // or equivalent local salary range
   "trendingSkills": [
     "Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"
   ],
@@ -1228,7 +1264,7 @@ Your output must be a single, raw, valid JSON object matching the exact structur
     console.warn("[Backend] API error occurred. Returning high-fidelity mock market intelligence. Details:", error.message);
     return res.json({
       demandLevel: "HIGH",
-      avgSalary: "₹6,0,000 - ₹11,00,000 per annum",
+      avgSalary: "₹6,00,000 - ₹11,00,000 per annum",  // Bug #13 fix: corrected comma formatting
       trendingSkills: [
         "Python", "SQL", "Git", "React.js", "Docker"
       ],
@@ -1341,10 +1377,620 @@ Ask me any specific career query, and I will do my best to guide you!`,
   }
 });
 
-// Serve frontend assets in production (optional, good practice)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ─────────────────────────────────────────────────────────
+// NODE CONTENT — lazy per-node AI generation
+// Called when a node reaches 80% parent completion
+// ─────────────────────────────────────────────────────────
+
+const AGE_CONTENT_RULES = {
+  CLASS_7_8:     { age: "12–14", rules: "Use ONLY: curiosity building, logical puzzles, basic math, intro hobby projects, reading about the field, simple block-based tools (Scratch, basic Excel). NEVER suggest SQL, APIs, frameworks, internships, or certifications." },
+  CLASS_9_10:    { age: "14–16", rules: "Use: reasoning challenges, beginner tools (Python basics, Excel), foundational concepts, light project-based learning, career exploration. NEVER suggest advanced frameworks, real internships, or professional certifications." },
+  CLASS_11_12:   { age: "16–18", rules: "Use: intermediate concepts, relevant subject focus, board prep, beginner certifications (NPTEL/SWAYAM free tier only), first small portfolio project. NEVER suggest production-level projects or paid internships." },
+  UNDERGRADUATE: { age: "18–22", rules: "Yr1-2: beginner-to-intermediate tools, first internship prep, beginner free certifications. Yr3-4: advanced projects, real internships, intermediate certifications, placement prep." },
+  POSTGRADUATE:  { age: "22–24", rules: "Use: research-level depth, specialization topics, advanced certifications, publications or thesis work where relevant, industry networking." },
+  WORKING:       { age: "22+",   rules: "Use: skill gap bridging, industry certifications, leadership skills, portfolio refinement, networking, promotion milestones. NO semester structure — use quarterly blocks." }
+};
+
+function getOfflineMockNodeContent(nodeId, nodeLabel, profile) {
+  const stage = profile?.stage || "UNDERGRADUATE";
+  const fieldType = profile?.field?.type || "TECH";
+  const careerGoal = profile?.goal?.description || "your career goal";
+  const lowId = nodeId.toLowerCase();
+
+  // Checkpoints have achievements instead of goals
+  if (lowId.includes("checkpoint") || lowId.includes("-cp")) {
+    let achievements = [];
+    if (lowId.includes("gr10")) {
+      achievements = [
+        "Acquired Grade 10 Board Certification",
+        "Completed stream selection and high-school academic path alignment"
+      ];
+    } else if (lowId.includes("gr12")) {
+      achievements = [
+        "Acquired Grade 12 Board Certification",
+        "Completed university entrance exams and undergraduate course registration"
+      ];
+    } else if (lowId.includes("yr1")) {
+      achievements = [
+        "Completed Year 1 foundation courses with strong GPA",
+        "Built baseline coding skills and joined campus network"
+      ];
+    } else if (lowId.includes("yr2")) {
+      achievements = [
+        "Completed Year 2 intermediate coursework",
+        "Developed three practical mini-projects and applied for stipend internships"
+      ];
+    } else if (lowId.includes("yr3")) {
+      achievements = [
+        "Completed Year 3 advanced coursework",
+        "Earned first industry-recognized certification and internship experience"
+      ];
+    } else if (lowId.includes("yr4")) {
+      achievements = [
+        "Completed graduation capstone project",
+        "Prepared portfolio and secured final placement options"
+      ];
+    } else if (lowId.includes("pg")) {
+      achievements = [
+        "Completed Postgraduate specialization modules",
+        "Delivered thesis project and prepared for senior-level placement"
+      ];
+    } else if (lowId.includes("cp1")) {
+      achievements = [
+        "Onboarded successfully and mastered key tools of the position",
+        "Delivered first set of production tasks under professional guidance"
+      ];
+    } else if (lowId.includes("cp2")) {
+      achievements = [
+        "Established strong position ownership and lateral transition goals",
+        "Completed first year review with verified resume achievements"
+      ];
+    } else {
+      achievements = [
+        `Successfully passed all milestone checks for ${nodeLabel}`,
+        `Validated skills and updated progress narrative for ${careerGoal}`
+      ];
+    }
+
+    return {
+      goals: [],
+      skills: ["Self-reflection", "Performance review", "Resume branding"],
+      achievements,
+      milestones: [{
+        id: `${nodeId}-ms-1`,
+        title: `Verify achievements for ${nodeLabel}`,
+        detail: `Review skills built and progress narrative at the ${nodeLabel}.`,
+        timeframe: nodeLabel
+      }],
+      summary: `You have reached the ${nodeLabel}. This checkpoint reviews your accumulated achievements and updates your career profile.`,
+      goal_reasons: {},
+      stageGoals: [],
+      isMock: true
+    };
+  }
+  
+  // Default values
+  let goals = [
+    `Master the key concepts and tools relevant to ${nodeLabel}`,
+    `Build a practical mini-project demonstrating skills from this stage`,
+    `Document your progress and reflect on learning from this period`
+  ];
+  let skills = ["Critical thinking", "Domain knowledge", "Time management"];
+  let summary = `This stage focuses on ${nodeLabel}, building the foundation you need to reach your goal of becoming a ${careerGoal}.`;
+  
+  if (lowId.includes("root")) {
+    goals = [
+      `Define your career aspirations and identify target fields (e.g. Software, Finance, Design)`,
+      `Conduct informational interviews or research professionals working in your target role`,
+      `Assess your current skill strengths and map out learning gaps`
+    ];
+    skills = ["Career planning", "Market research", "Self-assessment"];
+    summary = "Welcome to your roadmap! This initial step is about self-discovery, target setting, and mapping your current capabilities.";
+  } else if (lowId.includes("grade-9")) {
+    goals = [
+      `Build solid mathematical foundations (Algebra, Statistics) essential for analytical fields`,
+      `Explore introductory coding resources (e.g. Scratch, Python) or basic logic puzzle solving`,
+      `Maintain a consistent study schedule and master active recall study techniques`
+    ];
+    skills = ["Algorithmic logic", "Basic arithmetic", "Active learning"];
+    summary = "Grade 9 is the perfect time to build strong study habits and explore fundamental scientific and mathematical principles.";
+  } else if (lowId.includes("grade-10")) {
+    goals = [
+      `Excel in 10th Grade board examinations to keep high-school option pathways open`,
+      `Examine boards (CBSE, State, Diploma) and stream branch specializations (Science, Commerce, Arts)`,
+      `Develop public speaking and collaboration skills through school presentations and group work`
+    ];
+    skills = ["Exam preparation", "Academic planning", "Public speaking"];
+    summary = "Grade 10 is a major milestone year focused on boards and stream selection. Excel in exams and plan your next academic stage.";
+  } else if (lowId.includes("grade-11")) {
+    goals = [
+      `Deep dive into selected stream subjects (e.g. Physics, Chemistry, Math or Accounts/Economics)`,
+      `Learn core computing concepts (basic variables, loops) or business fundamentals depending on stream`,
+      `Research top universities and admission criteria for target undergraduate degrees`
+    ];
+    skills = ["Advanced sciences", "Logical thinking", "University research"];
+    summary = "Grade 11 marks the start of your specialization stream. Lay down deep academic roots in your chosen subjects.";
+  } else if (lowId.includes("grade-12")) {
+    goals = [
+      `Achieve competitive scores in 12th Grade boards and college entrance examinations`,
+      `Prepare college applications, personal statements, and draft a high-school resume`,
+      `Learn personal finance basics (budgeting, saving) before transitioning to college`
+    ];
+    skills = ["Time management under pressure", "College writing", "Financial literacy"];
+    summary = "Grade 12 is the final board exam year. Focus heavily on entrance tests, boards, and securing college admissions.";
+  } else if (lowId.includes("sem-1") || lowId.includes("sem-2") || lowId.includes("semester-1") || lowId.includes("semester-2")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Maintain a strong first-year GPA (GPA > 8.0/10) to secure future elective options`,
+        `Master programming fundamentals (basic Python, C++, or Java syntax) and OOP principles`,
+        `Join campus technical clubs and coding societies to meet peers and build networks`
+      ];
+      skills = ["Object-Oriented Programming", "Algorithm basics", "Networking"];
+    } else {
+      goals = [
+        `Maintain a strong first-year GPA (GPA > 8.0/10) to build a solid academic record`,
+        `Master core principles of microeconomics, financial accounting, and business laws`,
+        `Join campus business, commerce, or debating clubs to develop leadership skills`
+      ];
+      skills = ["Accounting principles", "Economic analysis", "Group discussion"];
+    }
+    summary = "Your first year of college is about adjusting to university life, maintaining a strong GPA, and learning core fundamentals.";
+  } else if (lowId.includes("sem-3") || lowId.includes("sem-4") || lowId.includes("semester-3") || lowId.includes("semester-4")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Master Data Structures & Algorithms (Arrays, Linked Lists, Trees, Stacks, Queues)`,
+        `Build 2-3 mini-projects using your core programming language and host them on GitHub`,
+        `Learn relational database concepts and write SQL queries for data management`
+      ];
+      skills = ["Data Structures & Algorithms", "SQL Databases", "Git & GitHub"];
+    } else {
+      goals = [
+        `Master financial accounting, corporate governance, and cost analysis principles`,
+        `Build spreadsheet models (Excel/Google Sheets) for basic corporate budgets`,
+        `Participate in national-level case study competitions and business simulations`
+      ];
+      skills = ["Advanced Excel", "Financial modeling", "Case analysis"];
+    }
+    summary = "Second year is critical for domain depth. Build projects, master core technical subjects, and start using source control.";
+  } else if (lowId.includes("sem-5") || lowId.includes("sem-6") || lowId.includes("semester-5") || lowId.includes("semester-6")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Learn advanced framework development (e.g. React/Node.js or Python backend frameworks)`,
+        `Apply for summer software developer or technical internships via Internshala and LinkedIn`,
+        `Solve 100+ coding problems on platforms like LeetCode or HackerRank to prepare for placements`
+      ];
+      skills = ["Web Development", "LeetCode practice", "Internship prep"];
+    } else {
+      goals = [
+        `Master financial management, income tax laws, and business analytics methods`,
+        `Secure a summer internship in marketing, corporate finance, or business operations`,
+        `Prepare case studies and brush up on group discussions and business writing`
+      ];
+      skills = ["Corporate Finance", "Business writing", "Interview skills"];
+    }
+    summary = "Third year focuses on internships and upskilling. Build real projects, practice interview questions, and secure summer roles.";
+  } else if (lowId.includes("sem-7") || lowId.includes("sem-8") || lowId.includes("semester-7") || lowId.includes("semester-8")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Complete a high-impact final year Capstone project demonstrating end-to-end implementation`,
+        `Prepare for technical interviews (System Design, OS, DBMS) and solve mock challenges`,
+        `Participate in campus placement drives and apply to target software graduate programs`
+      ];
+      skills = ["System Design", "Final capstone project", "Technical interviewing"];
+    } else {
+      goals = [
+        `Complete a comprehensive final year dissertation or industry consulting capstone project`,
+        `Prepare for quantitative aptitude, logical reasoning tests, and behavioral interviews`,
+        `Secure a graduate associate position or apply to target postgraduate MBA programs`
+      ];
+      skills = ["Aptitude testing", "Behavioral interviewing", "Strategic analysis"];
+    }
+    summary = "Your final year is all about placements and graduation. Complete your capstone project and secure your transition to career or masters.";
+  } else if (lowId.includes("pg")) {
+    goals = [
+      `Master advanced specialization coursework (AI/ML algorithms, Advanced Corporate Strategy, or clinical diagnostics)`,
+      `Conduct thesis or specialized research and aim to publish at least one peer-reviewed conference paper`,
+      `Prepare for post-graduate final placements and apply to senior leadership associate roles`
+    ];
+    skills = ["Research methodology", "Specialized domain tools", "Leadership prep"];
+    summary = "Your Master's degree is about advanced mastery. Publish research, complete specialized internships, and transition into senior industry roles.";
+  }
+  
+  // Build goal_reasons
+  const goal_reasons = {};
+  goals.forEach(g => {
+    goal_reasons[g] = `Achieving this goal helps you build the necessary foundation to become a successful ${careerGoal}.`;
+  });
+  
+  return {
+    goals,
+    skills,
+    milestones: [{
+      id: `${nodeId}-ms-1`,
+      title: `Complete ${nodeLabel} objectives`,
+      detail: `Lay down solid foundations in ${nodeLabel} to progress toward ${careerGoal}.`,
+      timeframe: nodeLabel
+    }],
+    summary,
+    goal_reasons,
+    stageGoals: goals.slice(0, 2),
+    isMock: true
+  };
+}
+
+app.post("/api/node-content", async (req, res) => {
+  const { profile, nodeType, nodeId, nodeLabel, parentNodeLabel, completedMilestones, userSelections, allCompletedGoals } = req.body;
+
+  try {
+    if (!profile || !nodeId || !nodeType) {
+      return res.status(400).json({ error: "profile, nodeId, and nodeType are required." });
+    }
+    if (!genAI) {
+      return res.status(503).json({ error: "Gemini API not configured." });
+    }
+
+    const stage = profile.stage || "UNDERGRADUATE";
+    const ageRule = AGE_CONTENT_RULES[stage] || AGE_CONTENT_RULES.UNDERGRADUATE;
+    const careerGoal = profile.goal?.description || "their career goal";
+    const fieldLabel = profile.field?.type === "OTHER" ? profile.field?.customValue : profile.field?.type;
+    const completedGoalsList = (allCompletedGoals || []).join(", ") || "None yet";
+    const isCheckpointType = nodeType === "checkpoint" || nodeId.toLowerCase().includes("checkpoint") || nodeId.toLowerCase().includes("-cp");
+
+    const boardSelectVal = userSelections?.["node-board-select"] || "";
+    const ugSelectVal = userSelections?.["node-ug-select"] || "";
+    const mastersSelectVal = userSelections?.["node-masters-select"] || "";
+
+    const prompt = `You are an expert career advisor generating content for ONE specific node in an interactive career mindmap.
+
+## User Profile
+- Name: ${profile.name}
+- Current Stage: ${stage} (age ${ageRule.age})
+- Field: ${fieldLabel}
+- Career Goal: "${careerGoal}"
+- Financial Tier: ${profile.financialTier}
+- Current Skills: ${(profile.skills || []).join(", ")}
+${boardSelectVal ? `- Selected Board & Stream: ${boardSelectVal}` : ""}
+${ugSelectVal ? `- Selected UG Degree: ${ugSelectVal}` : ""}
+${mastersSelectVal ? `- Selected Post-grad Pathway: ${mastersSelectVal}` : ""}
+
+## Node Being Generated
+- Node ID: ${nodeId}
+- Node Type: ${nodeType}
+- Node Label: "${nodeLabel}"
+- Parent Node: "${parentNodeLabel || "Root"}"
+- Already completed goals in this journey: ${completedGoalsList}
+
+${isCheckpointType ? `
+### SPECIAL RULE FOR CHECKPOINT NODES:
+This is a checkpoint node. Checkpoints represent milestones where the user pauses to review achievements and generate a mini-resume.
+1. The "goals" array MUST be empty: [].
+2. Return a list of 2-3 specific achievements/milestones suitable for this position/stage in the "achievements" array field (e.g. "Acquired Grade 10 Board Certification", "Completed stream selection and high-school academic path alignment").
+` : `
+## Age-Appropriate Content Rule (STRICTLY ENFORCED)
+Stage: ${stage} — ${ageRule.rules}
+
+## ZERO REPETITION RULE
+Do NOT repeat any goal, skill, or milestone that appears in the already-completed list: [${completedGoalsList}]
+`}
+
+## Task
+Generate content specifically for THIS node ("${nodeLabel}") that directly helps ${profile.name} reach their goal of becoming a "${careerGoal}".
+
+## Output Format (raw JSON only, no markdown)
+{
+  "goals": [
+    ${isCheckpointType ? "" : `"Goal sentence 1 (specific, age-appropriate, tied to ${careerGoal})", "Goal sentence 2", "Goal sentence 3"`}
+  ],
+  "achievements": [
+    ${isCheckpointType ? `"Specific milestone achievement 1 (suited to ${nodeLabel} and ${careerGoal})", "Specific milestone achievement 2"` : ""}
+  ],
+  "skills": [
+    "Skill 1 (never repeat from completed list)",
+    "Skill 2",
+    "Skill 3"
+  ],
+  "milestones": [
+    {
+      "id": "${nodeId}-ms-1",
+      "title": "Specific milestone title",
+      "detail": "What to do and why it matters for reaching ${careerGoal}",
+      "timeframe": "${nodeLabel}"
+    }
+  ],
+  "summary": "One paragraph: what this stage is about and why it matters for reaching ${careerGoal}",
+  "goal_reasons": {
+    ${isCheckpointType ? "" : `"Goal sentence 1": "One sentence connecting this goal directly to becoming a ${careerGoal}", "Goal sentence 2": "One sentence reason", "Goal sentence 3": "One sentence reason"`}
+  },
+  "stageGoals": [
+    ${isCheckpointType ? "" : `"Short actionable goal 1 for this specific stage", "Short actionable goal 2", "Short actionable goal 3"`}
+  ]
+}
+
+Rules:
+1. Every goal in "goals" MUST have a matching entry in "goal_reasons" with exactly the same text as the key
+2. goal_reasons values must be SPECIFIC to this goal AND to "${careerGoal}" — never generic
+3. Skills must be deduplicated from: [${completedGoalsList}]
+4. Content difficulty must match age ${ageRule.age} exactly
+5. Return ONLY the JSON object — no markdown, no preamble`;
+
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    console.log(`[Backend] Generating node content for: "${nodeLabel}" (${nodeType}, stage: ${stage})`);
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    const parsed = JSON.parse(cleanGeminiJsonResponse(responseText));
+
+    // Normalize output
+    const normalized = {
+      goals: Array.isArray(parsed.goals) ? parsed.goals.filter(g => typeof g === "string" && g.trim()) : [],
+      achievements: Array.isArray(parsed.achievements) ? parsed.achievements.filter(a => typeof a === "string" && a.trim()) : [],
+      skills: Array.isArray(parsed.skills) ? parsed.skills.filter(s => typeof s === "string" && s.trim()) : [],
+      milestones: Array.isArray(parsed.milestones) ? parsed.milestones.map((m, i) => ({
+        id: m.id || `${nodeId}-ms-${i + 1}`,
+        title: m.title || "Milestone",
+        detail: m.detail || "Work toward this stage.",
+        timeframe: m.timeframe || nodeLabel
+      })) : [],
+      summary: typeof parsed.summary === "string" ? parsed.summary : `Focus on ${nodeLabel} to progress toward ${careerGoal}.`,
+      goal_reasons: (typeof parsed.goal_reasons === "object" && !Array.isArray(parsed.goal_reasons)) ? parsed.goal_reasons : {},
+      stageGoals: Array.isArray(parsed.stageGoals) ? parsed.stageGoals : []
+    };
+
+    console.log(`[Backend] Node content generated: ${normalized.goals.length} goals, ${normalized.achievements?.length || 0} achievements, ${normalized.skills.length} skills`);
+    res.json(normalized);
+
+  } catch (error) {
+    console.error("[Backend Error] node-content failed:", error.message);
+    const nodeLabel_ = nodeLabel || nodeId;
+    const mockContent = getOfflineMockNodeContent(nodeId, nodeLabel_, profile);
+    res.json(mockContent);
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// CHECKPOINT — narrative summary + mini resume
+// Called when user opens a gold checkpoint node
+// ─────────────────────────────────────────────────────────
+
+app.post("/api/checkpoint", async (req, res) => {
+  const { profile, checkpointLabel, completedGoals, completedSkills, completedCerts, completedInternships } = req.body;
+
+  try {
+    if (!profile) {
+      return res.status(400).json({ error: "profile is required." });
+    }
+    if (!genAI) {
+      return res.status(503).json({ error: "Gemini API not configured." });
+    }
+
+    const careerGoal = profile.goal?.description || "their career goal";
+    const stage = profile.stage || "UNDERGRADUATE";
+    const completedGoalsList = (completedGoals || []).join("\n- ");
+    const skillsList = (completedSkills || []).join(", ");
+    const certsList = (completedCerts || []).join(", ") || "None yet";
+    const internList = (completedInternships || []).join(", ") || "None yet";
+
+    const prompt = `You are a career advisor generating a checkpoint summary for ${profile.name}.
+
+## Context
+- Career Goal: "${careerGoal}"
+- Current Stage: ${stage}
+- Checkpoint: "${checkpointLabel}"
+
+## What They Have Completed So Far
+Goals achieved:
+- ${completedGoalsList || "Starting out"}
+
+Skills acquired: ${skillsList || "Building foundations"}
+Certifications: ${certsList}
+Internships: ${internList}
+
+## Output (raw JSON only, no markdown)
+{
+  "narrative": "2-3 paragraph inspiring narrative about what ${profile.name} has built so far and exactly why they are on track for ${careerGoal}. Reference their actual completed items. Be specific and encouraging.",
+  "skills_earned": ["deduplicated list of all skills earned so far"],
+  "certifications": ["list of certs completed"],
+  "internships": ["list of internships attempted"],
+  "mini_resume": "Formatted resume-style text block the user can copy. Include: Name, Career Goal, Education Stage, Skills (comma-separated), Certifications, Internships, Key Achievements. Use clean formatting with section headers."
+}`;
+
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    console.log(`[Backend] Generating checkpoint summary for: ${checkpointLabel}`);
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    const parsed = JSON.parse(cleanGeminiJsonResponse(responseText));
+
+    res.json({
+      narrative: parsed.narrative || `You have made excellent progress toward becoming a ${careerGoal}. Keep going!`,
+      skills_earned: Array.isArray(parsed.skills_earned) ? parsed.skills_earned : (completedSkills || []),
+      certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
+      internships: Array.isArray(parsed.internships) ? parsed.internships : [],
+      mini_resume: parsed.mini_resume || `${profile.name}\nGoal: ${careerGoal}\nSkills: ${skillsList}`
+    });
+
+  } catch (error) {
+    console.error("[Backend Error] checkpoint failed:", error.message);
+    const careerGoal = profile?.goal?.description || "your career goal";
+    res.json({
+      narrative: `You have made great progress on your journey toward becoming a ${careerGoal}. The skills and experiences you have gathered so far form a strong foundation. Keep pushing forward — you are on track!`,
+      skills_earned: completedSkills || [],
+      certifications: completedCerts || [],
+      internships: completedInternships || [],
+      mini_resume: `${profile?.name || "Student"}\nCareer Goal: ${careerGoal}\nStage: ${profile?.stage || ""}\nSkills: ${(completedSkills || []).join(", ")}`,
+      isMock: true
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// INIT ROADMAP — lightweight first-node initialization
+// ─────────────────────────────────────────────────────────
+
+app.post("/api/init-roadmap", async (req, res) => {
+  const profile = req.body;
+  try {
+    if (!profile || !profile.name || !profile.goal || !profile.goal.description) {
+      return res.status(400).json({ error: "Invalid profile data. Name and goal description are required." });
+    }
+    if (!genAI) {
+      return res.status(503).json({ error: "Gemini API client is not configured." });
+    }
+
+    const stage = profile.stage || "UNDERGRADUATE";
+    const ageRule = AGE_CONTENT_RULES[stage] || AGE_CONTENT_RULES.UNDERGRADUATE;
+    const careerGoal = profile.goal.description;
+    const fieldLabel = profile.field?.type === "OTHER" ? profile.field?.customValue : profile.field?.type;
+
+    console.log(`[Backend] Initializing roadmap scaffold for: ${profile.name} (Stage: ${stage})`);
+
+    const prompt = `You are a career consultant initializing a personalized career path.
+Generate a minimal starting roadmap JSON for:
+- Name: ${profile.name}
+- Current Stage: ${stage} (age ${ageRule.age})
+- Field: ${fieldLabel}
+- Career Goal: "${careerGoal}"
+- Financial Tier: ${profile.financialTier}
+- Current Skills: ${(profile.skills || []).join(", ")}
+
+Generate only the starting milestone content, plus initial recommendations for courses, certs, and alternates.
+
+Output format (raw JSON only, no markdown):
+{
+  "goalsToAchieve": {
+    "description": "Chronological pathway from ${stage} to ${careerGoal}",
+    "milestones": [
+      {
+        "id": "node-root-ms-1",
+        "title": "Initial Stage: ${stage} Focus",
+        "detail": "Actionable focus items for your current stage matching age ${ageRule.age}.",
+        "timeframe": "NOW",
+        "phase": "goalsToAchieve",
+        "prerequisites": []
+      }
+    ]
+  },
+  "collegeCourses": [
+    {
+      "id": "course-1",
+      "name": "Foundational Course Name",
+      "semester": "Semester 1",
+      "reason": "Why this builds core concepts for ${careerGoal}",
+      "financialTiers": ["LOW", "MEDIUM", "HIGH"]
+    }
+  ],
+  "internships": [],
+  "certifications": [
+    {
+      "id": "cert-1",
+      "name": "Introductory Certification Name",
+      "platform": "Coursera or NASSCOM",
+      "cost": "Free",
+      "duration": "4 weeks",
+      "impact": "Builds baseline credibility for ${careerGoal}",
+      "financialTiers": ["LOW", "MEDIUM", "HIGH"]
+    }
+  ],
+  "alternatePaths": [
+    {
+      "id": "alt-1",
+      "title": "Alternative Role Name",
+      "salaryRange": "Competitive",
+      "skillOverlap": 70,
+      "pivotRequired": "What is needed to pivot"
+    }
+  ],
+  "skillGap": {
+    "have": ${profile.skills && profile.skills.length > 0 ? JSON.stringify(profile.skills) : '[]'},
+    "need": [
+      { "skill": "Core skill to learn", "milestoneId": "node-root-ms-1" }
+    ],
+    "bridgingSteps": [
+      "Dedicate weekly time to recommended study plan.",
+      "Complete introductory certificates."
+    ]
+  }
+}`;
+
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    const parsed = JSON.parse(cleanGeminiJsonResponse(responseText));
+
+    // Form programmatically a dummy decisionTree to make parsed object pass parseRoadmap
+    parsed.decisionTree = {
+      id: "node-root",
+      label: "You Are Here",
+      type: "decision",
+      month: "Now",
+      detail: "Start of your path.",
+      financialTiers: ["LOW", "MEDIUM", "HIGH"],
+      status: "in_progress",
+      children: []
+    };
+
+    res.json(parsed);
+
+  } catch (error) {
+    console.error("[Backend Error] init-roadmap failed:", error.message);
+    // Return minimal valid roadmap matching schema
+    res.json({
+      goalsToAchieve: {
+        description: `Your custom pathway to becoming a ${profile.goal?.description || "Professional"}.`,
+        milestones: [
+          {
+            id: "node-root-ms-1",
+            title: `Adapt to ${profile.stage}`,
+            detail: `Focus on mastering the core principles at your current stage.`,
+            timeframe: "NOW",
+            phase: "goalsToAchieve",
+            prerequisites: []
+          }
+        ]
+      },
+      collegeCourses: [],
+      internships: [],
+      certifications: [],
+      alternatePaths: [],
+      decisionTree: {
+        id: "node-root",
+        label: "You Are Here",
+        type: "decision",
+        month: "Now",
+        detail: "Start of your path.",
+        financialTiers: ["LOW", "MEDIUM", "HIGH"],
+        status: "in_progress",
+        children: []
+      },
+      skillGap: {
+        have: profile.skills || [],
+        need: [],
+        bridgingSteps: ["Begin with the starting milestone."]
+      },
+      isMock: true
+    });
+  }
+});
+
+// Serve frontend assets in production
 app.use(express.static(path.join(__dirname, "../dist")));
+
+// Bug #14 fix: SPA catch-all — any unmatched GET request returns index.html
+// so that React Router deep links work correctly in production.
+// Note: Express 5 requires '/{*path}' instead of '*' due to path-to-regexp v8.
+app.get("/{*path}", (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
+});
 
 app.listen(PORT, () => {
   console.log(`==================================================`);

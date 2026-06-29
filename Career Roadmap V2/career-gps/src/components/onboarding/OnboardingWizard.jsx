@@ -555,18 +555,27 @@ export default function OnboardingWizard({ onComplete }) {
       let startedInPhase1 = false;
       let startedInPhase2 = false;
       let startedInPhase3 = false;
+      let maxPhase = 1;
       
       if (profile.stage === "CLASS_7_8") {
          startedInPhase1 = true;
-      } else if (profile.stage === "CLASS_9_10" || profile.stage === "CLASS_11_12") {
+         maxPhase = 4;
+      } else if (profile.stage === "CLASS_9_10") {
          startedInPhase2 = true;
-      } else if (profile.stage === "UNDERGRADUATE" || profile.stage === "POSTGRADUATE") {
+         maxPhase = 3;
+      } else if (profile.stage === "CLASS_11_12") {
+         startedInPhase2 = true;
+         maxPhase = 2;
+      } else if (profile.stage === "UNDERGRADUATE") {
+         startedInPhase3 = true;
+         maxPhase = 2;
+      } else if (profile.stage === "POSTGRADUATE") {
          startedInPhase3 = true;
       }
 
       const { customSkillInput, ...normalizedProfile } = {
         ...profile,
-        onboardingPhase: 1,
+        onboardingPhase: maxPhase,
         startStage: profile.stage,
         startedInPhase1: profile.startedInPhase1 ?? startedInPhase1,
         startedInPhase2: profile.startedInPhase2 ?? startedInPhase2,

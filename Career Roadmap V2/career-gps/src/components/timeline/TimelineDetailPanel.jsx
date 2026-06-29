@@ -166,6 +166,8 @@ export default function TimelineDetailPanel({
         </div>
       )}
 
+
+
       {/* Mark complete button (expanded, non-decision, non-locked) */}
       {isExpanded && !isDecision && node.status !== "locked" && (
         <button

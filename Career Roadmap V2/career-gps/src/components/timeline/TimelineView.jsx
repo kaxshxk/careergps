@@ -11,6 +11,7 @@ import {
 import TimelineNode from "./TimelineNode";
 import TimelineDetailPanel from "./TimelineDetailPanel";
 
+
 /**
  * Full-screen RPG-style vertical timeline view.
  *
@@ -95,12 +96,30 @@ export default function TimelineView({
   const toggleMilestone = useCallback((milestoneId) => {
     setCompletedMilestones((current) => {
       const next = new Set(current);
-      if (next.has(milestoneId)) next.delete(milestoneId);
-      else next.add(milestoneId);
+      if (next.has(milestoneId)) {
+        // Unchecking
+        next.delete(milestoneId);
+        
+        // Cascade uncheck: if this is a main milestone, uncheck all subsequent ones
+        const mainMilestones = roadmap?.goalsToAchieve?.milestones || [];
+        const index = mainMilestones.findIndex(m => m.id === milestoneId);
+        
+        if (index !== -1) {
+          for (let i = index + 1; i < mainMilestones.length; i++) {
+            next.delete(mainMilestones[i].id);
+            if (mainMilestones[i].prerequisites) {
+              mainMilestones[i].prerequisites.forEach(pre => next.delete(pre.id));
+            }
+          }
+        }
+      } else {
+        // Checking
+        next.add(milestoneId);
+      }
       saveCompletedMilestones(next);
       return next;
     });
-  }, []);
+  }, [roadmap]);
 
   // ── Hover handlers ──
   const handleHover = useCallback(

@@ -51,9 +51,9 @@ class GlobalErrorBoundary extends React.Component {
             color: "#fda4af",
             maxWidth: "90%",
             overflowX: "auto",
-            border: "1px border rgba(244, 63, 94, 0.2)"
+            border: "1px solid rgba(244, 63, 94, 0.2)"
           }}>
-            {this.state.error?.toString()}
+            {this.state.error?.stack || this.state.error?.toString()}
           </pre>
           <button
             onClick={this.handleReset}
