@@ -11,7 +11,8 @@ import {
   loadCompletedGoalsList,
   saveCompletedGoalsList,
   loadUserSelections,
-  saveUserSelections
+  saveUserSelections,
+  loadMindmapExpandedNodes
 } from "../../services/localStorageService";
 import { buildMindmapScaffold, flattenScaffold, calculateProgress, SCAFFOLD_COLORS } from "../../data/scaffoldBuilder";
 import CareerMindmap from "./CareerMindmap";
@@ -56,7 +57,10 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
   const [loadingCheckpoint, setLoadingCheckpoint] = useState(false);
 
   // Expand/collapse node IDs
-  const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set(["node-root"]));
+  const [expandedNodeIds, setExpandedNodeIds] = useState(() => {
+    const saved = loadMindmapExpandedNodes();
+    return saved ? new Set(saved) : new Set(["node-root"]);
+  });
 
   // ── Build Mindmap Scaffold Tree ──
   const scaffoldTree = useMemo(() => {
@@ -104,7 +108,8 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       for (const child of node.children) {
         // 1. If parent is a selection point:
         if (node.isSelectionPoint) {
-          if (selection && child.label === selection) {
+          const isSingleChild = node.children.length === 1;
+          if (selection && (isSingleChild || child.label === selection)) {
             const nextState = "unlocked";
             const oldState = safeStates[child.id] || "locked";
             if (oldState === "completed") {
@@ -169,7 +174,8 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               nodeType: startingNode.type,
               nodeLabel: startingNode.label,
               parentNodeLabel: "You Are Here",
-              allCompletedGoals: Array.from(completedGoals)
+              allCompletedGoals: Array.from(completedGoals),
+              userSelections
             })
           });
 
@@ -214,7 +220,8 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               nodeType: node.type,
               nodeLabel: node.label,
               parentNodeLabel: node.parentId ? (flatScaffold.find(p => p.id === node.parentId)?.label || "Parent Node") : "You Are Here",
-              allCompletedGoals: Array.from(completedGoals)
+              allCompletedGoals: Array.from(completedGoals),
+              userSelections
             })
           });
 
@@ -259,7 +266,8 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
           nodeType,
           nodeLabel,
           parentNodeLabel,
-          allCompletedGoals: Array.from(completedGoals)
+          allCompletedGoals: Array.from(completedGoals),
+          userSelections
         })
       });
 

@@ -155,6 +155,8 @@ export default function CareerMindmap({
   useEffect(() => {
     if (!svgRef.current || !treeData) return;
 
+    const hasRendered = sessionStorage.getItem("career-gps:mindmap-rendered") === "true";
+
     const { w, h } = dimensions;
     const root = buildHierarchy();
     if (!root) return;
@@ -268,7 +270,7 @@ export default function CareerMindmap({
     isFirstRenderRef.current = false;
 
     // Curved Bezier connectors
-    g.selectAll(".link")
+    const linkPath = g.selectAll(".link")
       .data(root.links())
       .join("path")
       .attr("class", "link")
@@ -290,10 +292,15 @@ export default function CareerMindmap({
         const ty = d.target.y + NODE_H / 2;
         const midX = (sx + tx) / 2;
         return `M${sx},${sy} C${midX},${sy} ${midX},${ty} ${tx},${ty}`;
-      })
-      .attr("opacity", 0)
-      .transition().duration(600).delay((d, i) => i * 12)
-      .attr("opacity", 1);
+      });
+
+    if (hasRendered) {
+      linkPath.attr("opacity", 1);
+    } else {
+      linkPath.attr("opacity", 0)
+        .transition().duration(600).delay((d, i) => i * 12)
+        .attr("opacity", 1);
+    }
 
     // Node groups
     const nodeG = g.selectAll(".node")
@@ -302,7 +309,6 @@ export default function CareerMindmap({
       .attr("class", d => `node ${d.data.state === "in_progress" ? "node-pulse" : ""}`)
       .attr("transform", d => `translate(${d.x}, ${d.y})`)
       .attr("cursor", d => d.data.state === "locked" ? "not-allowed" : "pointer")
-      .attr("opacity", 0)
       .on("mousedown", (event) => event.stopPropagation())
       .on("click", (event, d) => {
         event.stopPropagation();
@@ -330,8 +336,13 @@ export default function CareerMindmap({
         onNodeClick?.(d.data);
       });
 
-    nodeG.transition().duration(500).delay((d, i) => i * 15)
-      .attr("opacity", d => getNodeOpacity(d));
+    if (hasRendered) {
+      nodeG.attr("opacity", d => getNodeOpacity(d));
+    } else {
+      nodeG.attr("opacity", 0)
+        .transition().duration(500).delay((d, i) => i * 15)
+        .attr("opacity", d => getNodeOpacity(d));
+    }
 
     // Node background rect
     nodeG.append("rect")
@@ -442,6 +453,9 @@ export default function CareerMindmap({
       .attr("font-weight", "bold")
       .attr("fill", "#475569")
       .text(d => expandedNodeIds.has(d.data.id) ? "-" : "+");
+    
+    isFirstRenderRef.current = false;
+    sessionStorage.setItem("career-gps:mindmap-rendered", "true");
 
   }, [treeData, dimensions, nodeStates, buildHierarchy, onNodeClick, expandedNodeIds]);
 
