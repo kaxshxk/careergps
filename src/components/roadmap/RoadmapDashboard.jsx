@@ -1038,6 +1038,19 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
   const [selTier, setSelTier] = useState("");
   const [selUgCourse, setSelUgCourse] = useState("");
   const [expandedSelId, setExpandedSelId] = useState(null);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState(() => new Set());
+
+  const toggleNodeCollapsed = (nodeId) => {
+    setCollapsedNodeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
 
   const scaffold = buildMindmapScaffold(profile, nodeStates);
   const flatNodes = flattenScaffold(scaffold);
@@ -1079,65 +1092,88 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
               const goals = content?.goals || [];
               const goalReasons = content?.goal_reasons || {};
               const nodeState = (nodeStates || {})[node.id] || node.state;
+              const isCollapsed = collapsedNodeIds.has(node.id);
+
+              const completedCount = goals.filter(g => completedGoals.has(g)).length;
+              const totalCount = goals.length;
 
               return (
-                <div key={node.id} className="border border-slate-200/80 rounded-2xl p-5 bg-white shadow-sm flex flex-col gap-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
+                <div key={node.id} className="border border-slate-200/85 rounded-2xl bg-white shadow-sm flex flex-col overflow-hidden transition-all duration-300">
+                  {/* Collapsible Header */}
+                  <div 
+                    onClick={() => toggleNodeCollapsed(node.id)}
+                    className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50/50 transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-2.5">
                       <div 
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse"
                         style={{ background: node.color }}
                       />
-                      <span className="font-bold text-sm text-slate-800">{node.label}</span>
+                      <span className="font-extrabold text-sm text-slate-800">{node.label}</span>
                       <span className="text-[10px] text-slate-500 font-semibold px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">
                         {node.timeframe}
                       </span>
                     </div>
 
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                      nodeState === "completed" 
-                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
-                        : "bg-blue-100 text-blue-800 border border-blue-200"
-                    }`}>
-                      {nodeState}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      {/* Progress Summary Pill */}
+                      <span className="text-[10px] text-slate-500 font-bold px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200/60">
+                        {completedCount} of {totalCount} goals
+                      </span>
+                      
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        nodeState === "completed" 
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                          : "bg-blue-100 text-blue-800 border border-blue-200"
+                      }`}>
+                        {nodeState}
+                      </span>
+
+                      {/* Dropdown Chevron indicator */}
+                      <span className={`text-slate-400 font-bold transition-transform duration-200 text-[10px] shrink-0 ${isCollapsed ? "" : "rotate-180"}`}>
+                        ▼
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="grid gap-3">
-                    {goals.map((goal, idx) => {
-                      const isChecked = completedGoals.has(goal);
-                      const whyReason = goalReasons[goal] || "This helps build target career capabilities.";
+                  {/* Dropdown collapsible list container */}
+                  <div className={`transition-all duration-300 ease-in-out border-t border-slate-100/60 ${isCollapsed ? "max-h-0 opacity-0 pointer-events-none" : "max-h-[1000px] opacity-100 p-5 pt-4 bg-slate-50/10"}`}>
+                    <div className="grid gap-3">
+                      {goals.map((goal, idx) => {
+                        const isChecked = completedGoals.has(goal);
+                        const whyReason = goalReasons[goal] || "This helps build target career capabilities.";
 
-                      return (
-                        <div 
-                          key={idx}
-                          className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all duration-200 ${
-                            isChecked 
-                              ? "bg-emerald-50/20 border-emerald-250 text-slate-800" 
-                              : "bg-slate-50/50 border-slate-200 hover:border-slate-350 text-slate-700"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => onToggleGoal(goal)}
-                            className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                          />
-                          <div className="flex-1 text-sm leading-relaxed select-none">
-                            {goal}
-                          </div>
-                          
-                          <button
-                            onMouseEnter={(e) => handleMouseEnter(e, whyReason)}
-                            onMouseLeave={handleMouseLeave}
-                            className="text-slate-400 hover:text-amber-500 transition-colors p-0.5 flex-shrink-0"
-                            aria-label="Why this matters"
+                        return (
+                          <div 
+                            key={idx}
+                            className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all duration-200 ${
+                              isChecked 
+                                ? "bg-emerald-50/20 border-emerald-250 text-slate-800" 
+                                : "bg-white border-slate-200 hover:border-slate-350 text-slate-700"
+                            }`}
                           >
-                            💡
-                          </button>
-                        </div>
-                      );
-                    })}
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => onToggleGoal(goal)}
+                              className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                            />
+                            <div className="flex-1 text-sm leading-relaxed select-none">
+                              {goal}
+                            </div>
+                            
+                            <button
+                              onMouseEnter={(e) => handleMouseEnter(e, whyReason)}
+                              onMouseLeave={handleMouseLeave}
+                              className="text-slate-400 hover:text-amber-500 transition-colors p-0.5 flex-shrink-0"
+                              aria-label="Why this matters"
+                            >
+                              💡
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               );
