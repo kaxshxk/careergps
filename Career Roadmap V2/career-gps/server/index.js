@@ -1518,74 +1518,142 @@ function getOfflineMockNodeContent(nodeId, nodeLabel, profile) {
     ];
     skills = ["Time management under pressure", "College writing", "Financial literacy"];
     summary = "Grade 12 is the final board exam year. Focus heavily on entrance tests, boards, and securing college admissions.";
-  } else if (lowId.includes("sem-1") || lowId.includes("sem-2") || lowId.includes("semester-1") || lowId.includes("semester-2")) {
+  } else if (lowId.includes("sem-1") || lowId.includes("semester-1")) {
     if (fieldType === "TECH" || fieldType === "SCIENCE") {
       goals = [
-        `Maintain a strong first-year GPA (GPA > 8.0/10) to secure future elective options`,
-        `Master programming fundamentals (basic Python, C++, or Java syntax) and OOP principles`,
-        `Join campus technical clubs and coding societies to meet peers and build networks`
+        "Establish a solid college study schedule and daily learning habit",
+        "Maintain a GPA above 8.0 in your first semester core modules",
+        "Join at least one student technical club or interest group"
       ];
-      skills = ["Object-Oriented Programming", "Algorithm basics", "Networking"];
+      skills = ["Study habits", "Academic adaptation", "Time management"];
     } else {
       goals = [
-        `Maintain a strong first-year GPA (GPA > 8.0/10) to build a solid academic record`,
-        `Master core principles of microeconomics, financial accounting, and business laws`,
-        `Join campus business, commerce, or debating clubs to develop leadership skills`
+        "Establish a solid college study schedule and daily learning habit",
+        "Maintain a GPA above 8.0 in your first semester core business/commerce modules",
+        "Join campus business, commerce, or debating clubs to develop leadership skills"
       ];
-      skills = ["Accounting principles", "Economic analysis", "Group discussion"];
+      skills = ["Leadership skills", "Time management", "Academic adjustment"];
     }
-    summary = "Your first year of college is about adjusting to university life, maintaining a strong GPA, and learning core fundamentals.";
-  } else if (lowId.includes("sem-3") || lowId.includes("sem-4") || lowId.includes("semester-3") || lowId.includes("semester-4")) {
+    summary = "Your first semester of college is about adjusting to university life, establishing study schedules, and joining campus communities.";
+  } else if (lowId.includes("sem-2") || lowId.includes("semester-2")) {
     if (fieldType === "TECH" || fieldType === "SCIENCE") {
       goals = [
-        `Master Data Structures & Algorithms (Arrays, Linked Lists, Trees, Stacks, Queues)`,
-        `Build 2-3 mini-projects using your core programming language and host them on GitHub`,
-        `Learn relational database concepts and write SQL queries for data management`
+        "Master fundamental programming syntax and data structure concepts (basic Python/C++/Java)",
+        "Solve 30+ basic coding problems on HackerRank or LeetCode",
+        "Maintain high academic performance in university end-semester exams"
       ];
-      skills = ["Data Structures & Algorithms", "SQL Databases", "Git & GitHub"];
+      skills = ["Object-Oriented Programming", "Algorithm basics", "LeetCode practice"];
     } else {
       goals = [
-        `Master financial accounting, corporate governance, and cost analysis principles`,
-        `Build spreadsheet models (Excel/Google Sheets) for basic corporate budgets`,
-        `Participate in national-level case study competitions and business simulations`
+        "Master core principles of microeconomics, financial accounting, and business laws",
+        "Maintain high academic performance in commerce end-semester examinations",
+        "Build a basic resume highlighting first-year academic projects and activities"
+      ];
+      skills = ["Accounting principles", "Economic analysis", "Resume building"];
+    }
+    summary = "Your second semester focuses on programming fundamentals, data structures, or commerce core, and starting coding challenges.";
+  } else if (lowId.includes("sem-3") || lowId.includes("semester-3")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        "Master relational database concepts and write intermediate SQL queries",
+        "Learn Git version control and host your code repositories on GitHub",
+        "Build your first database-driven mini-project using your core language"
+      ];
+      skills = ["SQL Databases", "Git & GitHub", "Database Design"];
+    } else {
+      goals = [
+        "Master financial accounting, corporate governance, and cost analysis principles",
+        "Build spreadsheet models (Excel/Google Sheets) for basic corporate budgets",
+        "Participate in local case study competitions and business simulations"
       ];
       skills = ["Advanced Excel", "Financial modeling", "Case analysis"];
     }
-    summary = "Second year is critical for domain depth. Build projects, master core technical subjects, and start using source control.";
-  } else if (lowId.includes("sem-5") || lowId.includes("sem-6") || lowId.includes("semester-5") || lowId.includes("semester-6")) {
+    summary = "Semester 3 is about database management systems, version control, and building your first database projects or advanced business modeling.";
+  } else if (lowId.includes("sem-4") || lowId.includes("semester-4")) {
     if (fieldType === "TECH" || fieldType === "SCIENCE") {
       goals = [
-        `Learn advanced framework development (e.g. React/Node.js or Python backend frameworks)`,
-        `Apply for summer software developer or technical internships via Internshala and LinkedIn`,
-        `Solve 100+ coding problems on platforms like LeetCode or HackerRank to prepare for placements`
+        "Build 2-3 full-stack or specialized projects for your portfolio",
+        "Prepare your resume and optimize your LinkedIn profile for technical recruiters",
+        "Apply to at least 10 stipend-paying summer internships on Internshala/LinkedIn"
       ];
-      skills = ["Web Development", "LeetCode practice", "Internship prep"];
+      skills = ["Full-stack Development", "Resume optimization", "Internship applications"];
     } else {
       goals = [
-        `Master financial management, income tax laws, and business analytics methods`,
-        `Secure a summer internship in marketing, corporate finance, or business operations`,
-        `Prepare case studies and brush up on group discussions and business writing`
+        "Secure a summer internship in marketing, corporate finance, or business operations",
+        "Prepare case studies and brush up on group discussions and business writing",
+        "Build a professional LinkedIn network connecting with industry alumni"
       ];
-      skills = ["Corporate Finance", "Business writing", "Interview skills"];
+      skills = ["Business writing", "Interview skills", "Networking"];
     }
-    summary = "Third year focuses on internships and upskilling. Build real projects, practice interview questions, and secure summer roles.";
-  } else if (lowId.includes("sem-7") || lowId.includes("sem-8") || lowId.includes("semester-7") || lowId.includes("semester-8")) {
+    summary = "Semester 4 focuses on portfolio building, resume optimization, applying for business internships, and corporate communication skills.";
+  } else if (lowId.includes("sem-5") || lowId.includes("semester-5")) {
     if (fieldType === "TECH" || fieldType === "SCIENCE") {
       goals = [
-        `Complete a high-impact final year Capstone project demonstrating end-to-end implementation`,
-        `Prepare for technical interviews (System Design, OS, DBMS) and solve mock challenges`,
-        `Participate in campus placement drives and apply to target software graduate programs`
+        "Learn advanced framework development (e.g. React/Node.js or specialized machine learning tools)",
+        "Form a final year Capstone project group and finalize your project abstract",
+        "Secure and complete your first virtual/remote or local industry internship"
       ];
-      skills = ["System Design", "Final capstone project", "Technical interviewing"];
+      skills = ["React/Node.js", "Capstone project planning", "Industry internship"];
     } else {
       goals = [
-        `Complete a comprehensive final year dissertation or industry consulting capstone project`,
-        `Prepare for quantitative aptitude, logical reasoning tests, and behavioral interviews`,
-        `Secure a graduate associate position or apply to target postgraduate MBA programs`
+        "Master corporate finance, income tax laws, and business analytics methods",
+        "Complete a summer internship in your chosen specialization stream",
+        "Finalize abstract for your third-year dissertation or consulting capstone"
       ];
-      skills = ["Aptitude testing", "Behavioral interviewing", "Strategic analysis"];
+      skills = ["Corporate Finance", "Business Analytics", "Dissertation abstract"];
     }
-    summary = "Your final year is all about placements and graduation. Complete your capstone project and secure your transition to career or masters.";
+    summary = "Semester 5 focuses on advanced framework design, capstone project formation, corporate tax, and completing internships.";
+  } else if (lowId.includes("sem-6") || lowId.includes("semester-6")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        "Solve 100+ DSA problems focusing on arrays, trees, and graphs on LeetCode",
+        "Conduct 5+ peer mock interviews and practice core computer science fundamentals",
+        "Complete your major semester project prototype and host its live demo"
+      ];
+      skills = ["LeetCode DSA practice", "Mock interviewing", "Project deployment"];
+    } else {
+      goals = [
+        "Prepare for quantitative aptitude, logical reasoning tests, and behavioral interviews",
+        "Secure a pre-placement offer or complete a secondary specialized corporate project",
+        "Review core business management subjects to prepare for campus recruitment"
+      ];
+      skills = ["Aptitude testing", "Behavioral interviewing", "Placement preparation"];
+    }
+    summary = "Semester 6 is all about rigorous placement prep: solving DSA problems, mock interviews, and placement training.";
+  } else if (lowId.includes("sem-7") || lowId.includes("semester-7")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        "Submit applications to 15+ campus placement opportunities",
+        "Crack the coding/aptitude assessment rounds for target companies",
+        "Excel in technical and HR face-to-face interview cycles"
+      ];
+      skills = ["Job hunting", "Aptitude assessments", "Interview execution"];
+    } else {
+      goals = [
+        "Participate in corporate recruitment drives and apply to target associate programs",
+        "Excel in group discussions and case interviews for consulting/banking roles",
+        "Submit applications for graduate admission to postgraduate MBA/PGDM programs"
+      ];
+      skills = ["Group discussions", "Case interviews", "Postgrad applications"];
+    }
+    summary = "Semester 7 is about campus placement drives. Attend aptitude tests, code tests, consulting rounds, and excel in interviews.";
+  } else if (lowId.includes("sem-8") || lowId.includes("semester-8")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        "Complete and defend your final-year major engineering project",
+        "Clear all university credit requirements to secure your degree",
+        "Complete pre-onboarding training modules sent by your hiring employer"
+      ];
+      skills = ["Capstone defense", "Degree clearance", "Pre-onboarding preparation"];
+    } else {
+      goals = [
+        "Complete and defend your comprehensive final year consulting dissertation",
+        "Clear final term academic credits and secure university graduation clearance",
+        "Prepare for post-graduate relocation or transition to professional career"
+      ];
+      skills = ["Dissertation defense", "Graduation clearance", "Career transition"];
+    }
+    summary = "Semester 8 focuses on defending your capstone project/dissertation, clearing academic credits, and starting corporate pre-onboarding.";
   } else if (lowId.includes("pg")) {
     goals = [
       `Master advanced specialization coursework (AI/ML algorithms, Advanced Corporate Strategy, or clinical diagnostics)`,
