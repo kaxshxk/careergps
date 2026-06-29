@@ -1564,6 +1564,10 @@ app.post("/api/node-content", async (req, res) => {
     const fieldLabel = profile.field?.type === "OTHER" ? profile.field?.customValue : profile.field?.type;
     const completedGoalsList = (allCompletedGoals || []).join(", ") || "None yet";
 
+    const boardSelectVal = userSelections?.["node-board-select"] || "";
+    const ugSelectVal = userSelections?.["node-ug-select"] || "";
+    const mastersSelectVal = userSelections?.["node-masters-select"] || "";
+
     const prompt = `You are an expert career advisor generating content for ONE specific node in an interactive career mindmap.
 
 ## User Profile
@@ -1573,6 +1577,9 @@ app.post("/api/node-content", async (req, res) => {
 - Career Goal: "${careerGoal}"
 - Financial Tier: ${profile.financialTier}
 - Current Skills: ${(profile.skills || []).join(", ")}
+${boardSelectVal ? `- Selected Board & Stream: ${boardSelectVal}` : ""}
+${ugSelectVal ? `- Selected UG Degree: ${ugSelectVal}` : ""}
+${mastersSelectVal ? `- Selected Post-grad Pathway: ${mastersSelectVal}` : ""}
 
 ## Node Being Generated
 - Node ID: ${nodeId}

@@ -107,7 +107,8 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       for (const child of node.children) {
         // 1. If parent is a selection point:
         if (node.isSelectionPoint) {
-          if (selection && child.label === selection) {
+          const isSingleChild = node.children.length === 1;
+          if (selection && (isSingleChild || child.label === selection)) {
             const nextState = "unlocked";
             const oldState = safeStates[child.id] || "locked";
             if (oldState === "completed") {
@@ -229,7 +230,8 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
               nodeType: node.type,
               nodeLabel: node.label,
               parentNodeLabel: node.parentId ? (flatScaffold.find(p => p.id === node.parentId)?.label || "Parent Node") : "You Are Here",
-              allCompletedGoals: Array.from(completedGoals)
+              allCompletedGoals: Array.from(completedGoals),
+              userSelections
             })
           });
 
