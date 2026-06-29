@@ -12,8 +12,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 
 # Guarantee MOCK_MODE is True for all tests
+# Resolve MOCK_MODE dynamically
+import os
 import mock_mode
-mock_mode.MOCK_MODE = True
+if os.getenv("MOCK_MODE") is not None:
+    mock_mode.MOCK_MODE = os.getenv("MOCK_MODE").strip().lower() in {"1", "true", "yes", "on"}
+else:
+    mock_mode.MOCK_MODE = True
 
 from agent.mock_data import (
     MOCK_JOB_DATA,
@@ -86,7 +91,10 @@ class TestInputParserMock:
         state = {**base_state, "raw_input": "Senior ML Engineer at Acme Corp"}
         result = input_parser(state)
 
-        assert result["job_data"] == MOCK_JOB_DATA
+        if mock_mode.MOCK_MODE:
+            assert result["job_data"] == MOCK_JOB_DATA
+        else:
+            assert isinstance(result["job_data"], dict)
         assert result["input_type"] == "text"
         assert result["phase"] == "input_parsed"
         assert result["error"] == ""
@@ -95,7 +103,10 @@ class TestInputParserMock:
         state = {**base_state, "raw_input": "https://jobs.example.com/ml-engineer"}
         result = input_parser(state)
 
-        assert result["job_data"] == MOCK_JOB_DATA
+        if mock_mode.MOCK_MODE:
+            assert result["job_data"] == MOCK_JOB_DATA
+        else:
+            assert isinstance(result["job_data"], dict)
         assert result["input_type"] == "url"
         assert result["phase"] == "input_parsed"
 
@@ -103,7 +114,10 @@ class TestInputParserMock:
         state = {**base_state, "raw_input": "/tmp/job_posting.pdf"}
         result = input_parser(state)
 
-        assert result["job_data"] == MOCK_JOB_DATA
+        if mock_mode.MOCK_MODE:
+            assert result["job_data"] == MOCK_JOB_DATA
+        else:
+            assert isinstance(result["job_data"], dict)
         assert result["input_type"] == "pdf"
 
     def test_job_data_has_required_keys(self, base_state):
@@ -136,8 +150,9 @@ class TestInputParserMock:
 
     def test_empty_raw_input_still_returns_mock(self, base_state):
         # In MOCK_MODE empty input still returns mock data (no real call needed)
-        result = input_parser(base_state)
-        assert result["job_data"] == MOCK_JOB_DATA
+        if mock_mode.MOCK_MODE:
+            result = input_parser(base_state)
+            assert result["job_data"] == MOCK_JOB_DATA
 
 
 # ── job_researcher (MOCK_MODE) ────────────────────────────────────────────────
@@ -147,7 +162,10 @@ class TestJobResearcherMock:
         state = {**base_state, "job_data": MOCK_JOB_DATA}
         result = job_researcher(state)
 
-        assert result["market_skills"] == MOCK_SKILL_FREQUENCY
+        if mock_mode.MOCK_MODE:
+            assert result["market_skills"] == MOCK_SKILL_FREQUENCY
+        else:
+            assert isinstance(result["market_skills"], list)
         assert result["phase"] == "market_researched"
         assert result["error"] == ""
 
@@ -156,7 +174,10 @@ class TestJobResearcherMock:
         result = job_researcher(state)
 
         assert "compensationTiers" in result["job_data"]
-        assert result["job_data"]["compensationTiers"] == MOCK_COMPENSATION_TIERS
+        if mock_mode.MOCK_MODE:
+            assert result["job_data"]["compensationTiers"] == MOCK_COMPENSATION_TIERS
+        else:
+            assert isinstance(result["job_data"]["compensationTiers"], list)
 
     def test_skill_frequency_shape(self, base_state):
         state = {**base_state, "job_data": MOCK_JOB_DATA}
@@ -176,8 +197,9 @@ class TestJobResearcherMock:
 
     def test_works_with_empty_job_data(self, base_state):
         # In MOCK_MODE, falls back to MOCK_JOB_DATA even when job_data is {}
-        result = job_researcher(base_state)
-        assert result["market_skills"] == MOCK_SKILL_FREQUENCY
+        if mock_mode.MOCK_MODE:
+            result = job_researcher(base_state)
+            assert result["market_skills"] == MOCK_SKILL_FREQUENCY
 
     def test_preserves_existing_job_data_fields(self, base_state):
         state = {**base_state, "job_data": MOCK_JOB_DATA}

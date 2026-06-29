@@ -20,7 +20,7 @@ export function connectAnalysisWebSocket(
   onPhase: (phase: AnalysisPhaseMessage) => void,
   onError?: (error: Error) => void
 ) {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8001'
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000'
   const wsUrl = `${backendUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws/analyze/${sessionId}`
   let socket: WebSocket | null = null
   let reconnectAttempts = 0

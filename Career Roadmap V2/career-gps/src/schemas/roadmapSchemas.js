@@ -181,7 +181,7 @@ export const nodeMilestoneSchema = z.object({
 });
 
 export const nodeContentSchema = z.object({
-  goals: z.array(z.string().trim().min(1)).min(1),
+  goals: z.array(z.string().trim().min(1)),
   skills: z.array(z.string().trim().min(1)),
   milestones: z.array(nodeMilestoneSchema),
   summary: z.string().trim().min(1),

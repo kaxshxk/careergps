@@ -1183,10 +1183,10 @@ app.post("/api/market-intelligence", async (req, res) => {
         const response = await fetch("https://api.tavily.com/search", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${TAVILY_API_KEY}`
           },
           body: JSON.stringify({
-            api_key: TAVILY_API_KEY,
             query: `current job market demand salary trend top skills hiring companies for "${jobTitle}" ${location || "India"} 2026`,
             search_depth: "basic",
             max_results: 5

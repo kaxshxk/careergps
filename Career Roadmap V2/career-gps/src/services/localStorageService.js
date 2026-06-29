@@ -36,8 +36,35 @@ function safeParse(raw, fallback) {
   }
 }
 
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    console.warn(`[localStorageService] Failed to write key "${key}" to localStorage:`, err);
+    if (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED") {
+      try {
+        console.warn("[localStorageService] Quota exceeded. Attempting recovery by clearing node content cache...");
+        localStorage.removeItem(STORAGE_KEYS.nodeCache);
+        localStorage.setItem(key, value);
+        console.log("[localStorageService] Quota recovery successful after clearing node cache.");
+        return;
+      } catch (retryErr) {
+        console.error("[localStorageService] Quota recovery failed. Clearing chat history as last resort...", retryErr);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.chatHistory);
+          localStorage.setItem(key, value);
+          console.log("[localStorageService] Quota recovery successful after clearing chat history.");
+          return;
+        } catch (finalErr) {
+          console.error("[localStorageService] Critical: localStorage is completely full.", finalErr);
+        }
+      }
+    }
+  }
+}
+
 export function saveStudentProfile(profile) {
-  localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(profile));
+  safeSetItem(STORAGE_KEYS.profile, JSON.stringify(profile));
 }
 
 export function loadStudentProfile() {
@@ -45,7 +72,7 @@ export function loadStudentProfile() {
 }
 
 export function saveRoadmap(roadmap) {
-  localStorage.setItem(STORAGE_KEYS.roadmap, JSON.stringify(roadmap));
+  safeSetItem(STORAGE_KEYS.roadmap, JSON.stringify(roadmap));
 }
 
 export function loadRoadmap() {
@@ -53,7 +80,7 @@ export function loadRoadmap() {
 }
 
 export function saveFinancialTier(financialTier) {
-  localStorage.setItem(STORAGE_KEYS.financialTier, financialTier);
+  safeSetItem(STORAGE_KEYS.financialTier, financialTier);
 }
 
 export function loadFinancialTier() {
@@ -61,7 +88,7 @@ export function loadFinancialTier() {
 }
 
 export function saveCompletedMilestones(completedMilestones) {
-  localStorage.setItem(STORAGE_KEYS.progress, JSON.stringify([...completedMilestones]));
+  safeSetItem(STORAGE_KEYS.progress, JSON.stringify([...completedMilestones]));
 }
 
 export function loadCompletedMilestones() {
@@ -69,7 +96,7 @@ export function loadCompletedMilestones() {
 }
 
 export function saveCompletedDeepWeeks(weekIds) {
-  localStorage.setItem(STORAGE_KEYS.deepWeeks, JSON.stringify(weekIds));
+  safeSetItem(STORAGE_KEYS.deepWeeks, JSON.stringify(weekIds));
 }
 
 export function loadCompletedDeepWeeks() {
@@ -77,7 +104,7 @@ export function loadCompletedDeepWeeks() {
 }
 
 export function saveDeepRoadmap(deepRoadmap) {
-  localStorage.setItem(STORAGE_KEYS.deepRoadmap, JSON.stringify(deepRoadmap));
+  safeSetItem(STORAGE_KEYS.deepRoadmap, JSON.stringify(deepRoadmap));
 }
 
 export function loadDeepRoadmap() {
@@ -85,7 +112,7 @@ export function loadDeepRoadmap() {
 }
 
 export function saveResumeAnalysis(analysis) {
-  localStorage.setItem(STORAGE_KEYS.resumeAnalysis, JSON.stringify(analysis));
+  safeSetItem(STORAGE_KEYS.resumeAnalysis, JSON.stringify(analysis));
 }
 
 export function loadResumeAnalysis() {
@@ -93,7 +120,7 @@ export function loadResumeAnalysis() {
 }
 
 export function saveMarketIntel(intel) {
-  localStorage.setItem(STORAGE_KEYS.marketIntel, JSON.stringify(intel));
+  safeSetItem(STORAGE_KEYS.marketIntel, JSON.stringify(intel));
 }
 
 export function loadMarketIntel() {
@@ -101,7 +128,7 @@ export function loadMarketIntel() {
 }
 
 export function saveChatHistory(history) {
-  localStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(history));
+  safeSetItem(STORAGE_KEYS.chatHistory, JSON.stringify(history));
 }
 
 export function loadChatHistory() {
@@ -147,7 +174,7 @@ export function clearCareerGpsStorage() {
 
 export function saveNodeCache(cache) {
   // cache is a plain object: { [nodeId]: nodeContent }
-  localStorage.setItem(STORAGE_KEYS.nodeCache, JSON.stringify(cache));
+  safeSetItem(STORAGE_KEYS.nodeCache, JSON.stringify(cache));
 }
 
 export function loadNodeCache() {
@@ -160,7 +187,7 @@ export function loadNodeCache() {
 
 export function saveNodeStates(states) {
   // states is a plain object: { [nodeId]: "locked" | "unlocked" | "in_progress" | "completed" }
-  localStorage.setItem(STORAGE_KEYS.nodeStates, JSON.stringify(states));
+  safeSetItem(STORAGE_KEYS.nodeStates, JSON.stringify(states));
 }
 
 export function loadNodeStates() {
@@ -172,7 +199,7 @@ export function loadNodeStates() {
 // ─────────────────────────────────────────────────────────
 
 export function saveCompletedGoalsList(goalTexts) {
-  localStorage.setItem(STORAGE_KEYS.completedGoals, JSON.stringify(goalTexts));
+  safeSetItem(STORAGE_KEYS.completedGoals, JSON.stringify(goalTexts));
 }
 
 export function loadCompletedGoalsList() {
@@ -184,7 +211,7 @@ export function loadCompletedGoalsList() {
 // ─────────────────────────────────────────────────────────
 
 export function saveUserSelections(selections) {
-  localStorage.setItem(STORAGE_KEYS.userSelections, JSON.stringify(selections));
+  safeSetItem(STORAGE_KEYS.userSelections, JSON.stringify(selections));
 }
 
 export function loadUserSelections() {

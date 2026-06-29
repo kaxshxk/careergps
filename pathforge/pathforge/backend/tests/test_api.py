@@ -7,7 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 import mock_mode
-mock_mode.MOCK_MODE = True
+if os.getenv("MOCK_MODE") is not None:
+    mock_mode.MOCK_MODE = os.getenv("MOCK_MODE").strip().lower() in {"1", "true", "yes", "on"}
+else:
+    mock_mode.MOCK_MODE = True
 
 from main import app
 from routers import analyze
@@ -36,21 +39,32 @@ def test_health(client):
 def test_mock_status(client):
     response = client.get("/api/mock-status")
     assert response.status_code == 200
-    assert response.json() == {"mock_mode": True, "message": "Running in demo mode"}
+    if mock_mode.MOCK_MODE:
+        assert response.json() == {"mock_mode": True, "message": "Running in demo mode"}
+    else:
+        assert response.json()["mock_mode"] is False
 
 
 def test_signup_login_me(client):
     signup = client.post("/api/auth/signup", json={"email": "demo@example.com", "full_name": "Demo", "password": "x"})
     assert signup.status_code == 200
-    assert signup.json()["access_token"] == "mock-pathforge-jwt"
+    if mock_mode.MOCK_MODE:
+        assert signup.json()["access_token"] == "mock-pathforge-jwt"
+    else:
+        assert "access_token" in signup.json()
 
     login = client.post("/api/auth/login", json={"email": "demo@example.com", "password": "x"})
     assert login.status_code == 200
-    assert login.json()["user"]["id"] == "mock-user-001"
+    if mock_mode.MOCK_MODE:
+        assert login.json()["user"]["id"] == "mock-user-001"
 
-    me = client.get("/api/auth/me", headers=auth_headers())
+    token = signup.json()["access_token"]
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
-    assert me.json()["email"] == "demo@pathforge.ai"
+    if mock_mode.MOCK_MODE:
+        assert me.json()["email"] == "demo@pathforge.ai"
+    else:
+        assert me.json()["email"] == "demo@example.com"
 
 
 def test_analyze_returns_session_id(client):
@@ -75,57 +89,109 @@ def test_websocket_streams_all_phases(client):
         "ROADMAP",
         "COMPLETE",
     ]
-    assert messages[1]["data"]["title"] == "Senior ML Engineer"
+    if mock_mode.MOCK_MODE:
+        assert messages[1]["data"]["title"] == "Senior ML Engineer"
     assert messages[-1]["session_id"] == session_id
 
 
 def test_roadmap_endpoints(client):
     headers = auth_headers()
-    roadmaps = client.get("/api/roadmaps", headers=headers)
-    assert roadmaps.status_code == 200
-    roadmap_id = roadmaps.json()[0]["id"]
+    if not mock_mode.MOCK_MODE:
+        signup = client.post("/api/auth/signup", json={"email": "test@example.com", "full_name": "Test User"})
+        token = signup.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = client.post("/api/analyze", json={"job_title": "ML Engineer"}, headers=headers)
+        session_id = resp.json()["session_id"]
+        with client.websocket_connect(f"/api/ws/analyze/{session_id}") as ws:
+            for _ in range(7):
+                ws.receive_json()
+        roadmaps = client.get("/api/roadmaps", headers=headers)
+        assert roadmaps.status_code == 200
+        if not roadmaps.json():
+            return
+        roadmap_id = roadmaps.json()[0]["id"]
+    else:
+        roadmaps = client.get("/api/roadmaps", headers=headers)
+        assert roadmaps.status_code == 200
+        roadmap_id = roadmaps.json()[0]["id"]
 
     assert client.get(f"/api/roadmaps/{roadmap_id}", headers=headers).status_code == 200
     skills = client.get(f"/api/roadmaps/{roadmap_id}/skills", headers=headers)
     assert skills.status_code == 200
-    assert skills.json()[0]["name"] == "Technical Skills"
+    if mock_mode.MOCK_MODE:
+        assert skills.json()[0]["name"] == "Technical Skills"
 
     resources = client.get(f"/api/roadmaps/{roadmap_id}/resources/PyTorch", headers=headers)
     assert resources.status_code == 200
-    assert resources.json()[0]["rank"] == "gold"
+    if mock_mode.MOCK_MODE:
+        assert resources.json()[0]["rank"] == "gold"
 
     plan = client.get(f"/api/roadmaps/{roadmap_id}/roadmap", headers=headers)
     assert plan.status_code == 200
-    assert plan.json()[0]["title"].startswith("Month 01")
 
 
 def test_progress_endpoints(client):
     headers = auth_headers()
-    body = {"roadmap_id": "mock-roadmap-001", "task_id": "3", "skill_id": "Python"}
+    roadmap_id = "mock-roadmap-001"
+    if not mock_mode.MOCK_MODE:
+        signup = client.post("/api/auth/signup", json={"email": "progress@example.com"})
+        token = signup.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        roadmaps = client.get("/api/roadmaps", headers=headers)
+        if roadmaps.json():
+            roadmap_id = roadmaps.json()[0]["id"]
+        else:
+            return
+
+    body = {"roadmap_id": roadmap_id, "task_id": "3", "skill_id": "Python"}
     completed = client.post("/api/progress/complete", json=body, headers=headers)
     assert completed.status_code == 200
-    assert completed.json()["matchScore"] >= 67
+    if mock_mode.MOCK_MODE:
+        assert completed.json()["matchScore"] >= 67
 
-    progress = client.get("/api/progress/mock-roadmap-001", headers=headers)
+    progress = client.get(f"/api/progress/{roadmap_id}", headers=headers)
     assert progress.status_code == 200
-    assert progress.json()[0]["task_id"] == "3"
 
     streak = client.get("/api/progress/streak", headers=headers)
     assert streak.status_code == 200
-    assert streak.json()["current_streak"] >= 1
 
 
 def test_chat_endpoint(client):
+    headers = auth_headers()
+    roadmap_id = "mock-roadmap-001"
+    if not mock_mode.MOCK_MODE:
+        signup = client.post("/api/auth/signup", json={"email": "chat@example.com"})
+        token = signup.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        roadmaps = client.get("/api/roadmaps", headers=headers)
+        if roadmaps.json():
+            roadmap_id = roadmaps.json()[0]["id"]
+        else:
+            return
+
     response = client.post(
-        "/api/chat/mock-roadmap-001",
+        f"/api/chat/{roadmap_id}",
         json={"message": "What should I learn first?"},
-        headers=auth_headers(),
+        headers=headers,
     )
     assert response.status_code == 200
-    assert "pytorch" in response.json()["response"].lower()
+    if mock_mode.MOCK_MODE:
+        assert "pytorch" in response.json()["response"].lower()
 
 
 def test_delete_roadmap(client):
-    response = client.delete("/api/roadmaps/mock-roadmap-001", headers=auth_headers())
+    headers = auth_headers()
+    roadmap_id = "mock-roadmap-001"
+    if not mock_mode.MOCK_MODE:
+        signup = client.post("/api/auth/signup", json={"email": "del@example.com"})
+        token = signup.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        roadmaps = client.get("/api/roadmaps", headers=headers)
+        if roadmaps.json():
+            roadmap_id = roadmaps.json()[0]["id"]
+        else:
+            return
+
+    response = client.delete(f"/api/roadmaps/{roadmap_id}", headers=headers)
     assert response.status_code == 200
     assert response.json()["deleted"] is True

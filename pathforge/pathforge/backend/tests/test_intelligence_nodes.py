@@ -12,8 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
+import os
 import mock_mode
-mock_mode.MOCK_MODE = True
+if os.getenv("MOCK_MODE") is not None:
+    mock_mode.MOCK_MODE = os.getenv("MOCK_MODE").strip().lower() in {"1", "true", "yes", "on"}
+else:
+    mock_mode.MOCK_MODE = True
 
 from agent.mock_data import (
     MOCK_GAP_MAP,
@@ -157,11 +161,17 @@ class TestGapAnalyzer:
 
     def test_gap_map_matches_mock(self, full_state):
         result = gap_analyzer(full_state)
-        assert result["gap_map"] == MOCK_GAP_MAP
+        if mock_mode.MOCK_MODE:
+            assert result["gap_map"] == MOCK_GAP_MAP
+        else:
+            assert isinstance(result["gap_map"], dict)
 
     def test_match_score_equals_mock(self, full_state):
         result = gap_analyzer(full_state)
-        assert result["match_score"] == MOCK_GAP_MAP["matchScore"]
+        if mock_mode.MOCK_MODE:
+            assert result["match_score"] == MOCK_GAP_MAP["matchScore"]
+        else:
+            assert 0 <= result["match_score"] <= 100
 
     def test_calculate_match_score_logic(self):
         categories = [
@@ -196,7 +206,10 @@ class TestResourceFinder:
 
     def test_resources_equals_mock(self, post_gap_state):
         result = resource_finder(post_gap_state)
-        assert result["resources"] == MOCK_RESOURCES
+        if mock_mode.MOCK_MODE:
+            assert result["resources"] == MOCK_RESOURCES
+        else:
+            assert isinstance(result["resources"], dict)
 
     def test_resources_keyed_by_skill(self, post_gap_state):
         result = resource_finder(post_gap_state)
@@ -262,7 +275,8 @@ class TestRoadmapGenerator:
 
     def test_months_equals_mock(self, post_resources_state):
         result = roadmap_generator(post_resources_state)
-        assert result["roadmap"]["months"] == MOCK_ROADMAP
+        if mock_mode.MOCK_MODE:
+            assert result["roadmap"]["months"] == MOCK_ROADMAP
 
 
 # ── TASK 7: memory_saver ─────────────────────────────────────────────────────

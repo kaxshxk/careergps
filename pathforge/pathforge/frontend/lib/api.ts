@@ -73,7 +73,7 @@ export class ApiError extends Error {
   }
 }
 
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8001'
+const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000'
 const MOCK_ROADMAP_ID = 'mock-roadmap-local'
 
 function buildUrl(path: string) {
