@@ -39,12 +39,16 @@ Career GPS is built to serve three primary learner groups:
   * **Affordable:** Introduces budget-friendly certifications (Coursera, Udemy).
   * **Self-Funded:** Opens paid mentorship, specialized bootcamps, and high-impact premium certificates.
 
-### 2. D3.js Interactive Decision Tree
+### 2. D3.js Interactive Decision Tree & Mindmap
 * **Fluid Visualization:** Rather than reading a long text document, users explore their career path as a beautiful, organic network of nodes.
 * **Responsive Interactions:** Users can drag to pan, scroll to zoom, and click individual nodes.
 * **Tactile Spring Checkbox Popover:** Clicking any milestone opens a popover card. Tapping the checkmark plays a smooth, bounce-back spring animation (`spring-pop`) and updates the user's progress.
 * **Auto-Expand Progression:** Completing a goal automatically triggers the tree layout to expand, revealing the immediate next milestone path in real-time.
 * **Visual Status Sync:** Completed milestone nodes instantly transition to emerald green (`#16a34a`), signaling clear progress.
+* **Dynamic Node Pop-Out & Z-Index Raising:** Hovering over nodes scales them up smoothly (`scale(1.04)`) and programmatically raises them to the top of the canvas layout layer, providing clear focus.
+* **Marching Energy Flow Connectors:** Active/unlocked connection links display animated Bezier flow indicators (`.link-flow` with a negative dash-offset animation), giving a literal sense of energy flowing along completed paths.
+* **Checkpoint Milestone Achievements:** Checkpoint nodes (like Grade 10 Checkpoint or Year 1 Checkpoint) do not contain checkbox goals. Instead, they render as "Milestone Achievements" with stars (`⭐`) in the popover and as distinct gold-accented Milestone Checkpoint cards on the Goals dashboard.
+* **Real-time State Propagation**: Locks/unlocks cascade down the tree automatically by evaluating selection choices (like high-school streams/boards or college degrees) and checking completed goals checklist percentages in real-time.
 
 ---
 

@@ -1395,6 +1395,79 @@ function getOfflineMockNodeContent(nodeId, nodeLabel, profile) {
   const stage = profile?.stage || "UNDERGRADUATE";
   const fieldType = profile?.field?.type || "TECH";
   const careerGoal = profile?.goal?.description || "your career goal";
+  const lowId = nodeId.toLowerCase();
+
+  // Checkpoints have achievements instead of goals
+  if (lowId.includes("checkpoint") || lowId.includes("-cp")) {
+    let achievements = [];
+    if (lowId.includes("gr10")) {
+      achievements = [
+        "Acquired Grade 10 Board Certification",
+        "Completed stream selection and high-school academic path alignment"
+      ];
+    } else if (lowId.includes("gr12")) {
+      achievements = [
+        "Acquired Grade 12 Board Certification",
+        "Completed university entrance exams and undergraduate course registration"
+      ];
+    } else if (lowId.includes("yr1")) {
+      achievements = [
+        "Completed Year 1 foundation courses with strong GPA",
+        "Built baseline coding skills and joined campus network"
+      ];
+    } else if (lowId.includes("yr2")) {
+      achievements = [
+        "Completed Year 2 intermediate coursework",
+        "Developed three practical mini-projects and applied for stipend internships"
+      ];
+    } else if (lowId.includes("yr3")) {
+      achievements = [
+        "Completed Year 3 advanced coursework",
+        "Earned first industry-recognized certification and internship experience"
+      ];
+    } else if (lowId.includes("yr4")) {
+      achievements = [
+        "Completed graduation capstone project",
+        "Prepared portfolio and secured final placement options"
+      ];
+    } else if (lowId.includes("pg")) {
+      achievements = [
+        "Completed Postgraduate specialization modules",
+        "Delivered thesis project and prepared for senior-level placement"
+      ];
+    } else if (lowId.includes("cp1")) {
+      achievements = [
+        "Onboarded successfully and mastered key tools of the position",
+        "Delivered first set of production tasks under professional guidance"
+      ];
+    } else if (lowId.includes("cp2")) {
+      achievements = [
+        "Established strong position ownership and lateral transition goals",
+        "Completed first year review with verified resume achievements"
+      ];
+    } else {
+      achievements = [
+        `Successfully passed all milestone checks for ${nodeLabel}`,
+        `Validated skills and updated progress narrative for ${careerGoal}`
+      ];
+    }
+
+    return {
+      goals: [],
+      skills: ["Self-reflection", "Performance review", "Resume branding"],
+      achievements,
+      milestones: [{
+        id: `${nodeId}-ms-1`,
+        title: `Verify achievements for ${nodeLabel}`,
+        detail: `Review skills built and progress narrative at the ${nodeLabel}.`,
+        timeframe: nodeLabel
+      }],
+      summary: `You have reached the ${nodeLabel}. This checkpoint reviews your accumulated achievements and updates your career profile.`,
+      goal_reasons: {},
+      stageGoals: [],
+      isMock: true
+    };
+  }
   
   // Default values
   let goals = [
@@ -1404,8 +1477,6 @@ function getOfflineMockNodeContent(nodeId, nodeLabel, profile) {
   ];
   let skills = ["Critical thinking", "Domain knowledge", "Time management"];
   let summary = `This stage focuses on ${nodeLabel}, building the foundation you need to reach your goal of becoming a ${careerGoal}.`;
-  
-  const lowId = nodeId.toLowerCase();
   
   if (lowId.includes("root")) {
     goals = [
@@ -1563,6 +1634,7 @@ app.post("/api/node-content", async (req, res) => {
     const careerGoal = profile.goal?.description || "their career goal";
     const fieldLabel = profile.field?.type === "OTHER" ? profile.field?.customValue : profile.field?.type;
     const completedGoalsList = (allCompletedGoals || []).join(", ") || "None yet";
+    const isCheckpointType = nodeType === "checkpoint" || nodeId.toLowerCase().includes("checkpoint") || nodeId.toLowerCase().includes("-cp");
 
     const boardSelectVal = userSelections?.["node-board-select"] || "";
     const ugSelectVal = userSelections?.["node-ug-select"] || "";
@@ -1588,11 +1660,18 @@ ${mastersSelectVal ? `- Selected Post-grad Pathway: ${mastersSelectVal}` : ""}
 - Parent Node: "${parentNodeLabel || "Root"}"
 - Already completed goals in this journey: ${completedGoalsList}
 
+${isCheckpointType ? `
+### SPECIAL RULE FOR CHECKPOINT NODES:
+This is a checkpoint node. Checkpoints represent milestones where the user pauses to review achievements and generate a mini-resume.
+1. The "goals" array MUST be empty: [].
+2. Return a list of 2-3 specific achievements/milestones suitable for this position/stage in the "achievements" array field (e.g. "Acquired Grade 10 Board Certification", "Completed stream selection and high-school academic path alignment").
+` : `
 ## Age-Appropriate Content Rule (STRICTLY ENFORCED)
 Stage: ${stage} — ${ageRule.rules}
 
 ## ZERO REPETITION RULE
 Do NOT repeat any goal, skill, or milestone that appears in the already-completed list: [${completedGoalsList}]
+`}
 
 ## Task
 Generate content specifically for THIS node ("${nodeLabel}") that directly helps ${profile.name} reach their goal of becoming a "${careerGoal}".
@@ -1600,9 +1679,10 @@ Generate content specifically for THIS node ("${nodeLabel}") that directly helps
 ## Output Format (raw JSON only, no markdown)
 {
   "goals": [
-    "Goal sentence 1 (specific, age-appropriate, tied to ${careerGoal})",
-    "Goal sentence 2",
-    "Goal sentence 3"
+    ${isCheckpointType ? "" : `"Goal sentence 1 (specific, age-appropriate, tied to ${careerGoal})", "Goal sentence 2", "Goal sentence 3"`}
+  ],
+  "achievements": [
+    ${isCheckpointType ? `"Specific milestone achievement 1 (suited to ${nodeLabel} and ${careerGoal})", "Specific milestone achievement 2"` : ""}
   ],
   "skills": [
     "Skill 1 (never repeat from completed list)",
@@ -1619,14 +1699,10 @@ Generate content specifically for THIS node ("${nodeLabel}") that directly helps
   ],
   "summary": "One paragraph: what this stage is about and why it matters for reaching ${careerGoal}",
   "goal_reasons": {
-    "Goal sentence 1": "One sentence connecting this goal directly to becoming a ${careerGoal}",
-    "Goal sentence 2": "One sentence reason",
-    "Goal sentence 3": "One sentence reason"
+    ${isCheckpointType ? "" : `"Goal sentence 1": "One sentence connecting this goal directly to becoming a ${careerGoal}", "Goal sentence 2": "One sentence reason", "Goal sentence 3": "One sentence reason"`}
   },
   "stageGoals": [
-    "Short actionable goal 1 for this specific stage",
-    "Short actionable goal 2",
-    "Short actionable goal 3"
+    ${isCheckpointType ? "" : `"Short actionable goal 1 for this specific stage", "Short actionable goal 2", "Short actionable goal 3"`}
   ]
 }
 
@@ -1650,6 +1726,7 @@ Rules:
     // Normalize output
     const normalized = {
       goals: Array.isArray(parsed.goals) ? parsed.goals.filter(g => typeof g === "string" && g.trim()) : [],
+      achievements: Array.isArray(parsed.achievements) ? parsed.achievements.filter(a => typeof a === "string" && a.trim()) : [],
       skills: Array.isArray(parsed.skills) ? parsed.skills.filter(s => typeof s === "string" && s.trim()) : [],
       milestones: Array.isArray(parsed.milestones) ? parsed.milestones.map((m, i) => ({
         id: m.id || `${nodeId}-ms-${i + 1}`,
@@ -1662,7 +1739,7 @@ Rules:
       stageGoals: Array.isArray(parsed.stageGoals) ? parsed.stageGoals : []
     };
 
-    console.log(`[Backend] Node content generated: ${normalized.goals.length} goals, ${normalized.skills.length} skills`);
+    console.log(`[Backend] Node content generated: ${normalized.goals.length} goals, ${normalized.achievements?.length || 0} achievements, ${normalized.skills.length} skills`);
     res.json(normalized);
 
   } catch (error) {

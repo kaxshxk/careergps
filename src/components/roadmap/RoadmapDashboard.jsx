@@ -82,7 +82,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   });
 
   // Reevaluate node states
-  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache) => {
+  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache, currentStates) => {
     const root = buildMindmapScaffold(profile, {});
     const flat = flattenScaffold(root);
     const nextStates = {};
@@ -94,8 +94,9 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       nextStates[startNode.id] = "unlocked";
     }
 
+    const safeGoals = currentGoals || new Set();
     const safeCache = currentCache || {};
-    const safeStates = nodeStates || {};
+    const safeStates = currentStates || nodeStates || {};
 
     function walk(node) {
       const state = nextStates[node.id] || "locked";
@@ -110,13 +111,21 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
           const isSingleChild = node.children.length === 1;
           if (selection && (isSingleChild || child.label === selection)) {
             const nextState = "unlocked";
-            const oldState = safeStates[child.id] || "locked";
-            if (oldState === "completed") {
-              nextStates[child.id] = "completed";
-            } else if (oldState === "in_progress") {
-              nextStates[child.id] = "in_progress";
+            // Dynamically check if child is completed based on safeGoals checklist
+            const childContent = safeCache[child.id];
+            const childGoals = childContent?.goals || [];
+            if (childGoals.length > 0) {
+              const completedCount = childGoals.filter(g => safeGoals.has(g)).length;
+              if (completedCount === childGoals.length) {
+                nextStates[child.id] = "completed";
+              } else if (completedCount > 0) {
+                nextStates[child.id] = "in_progress";
+              } else {
+                nextStates[child.id] = nextState;
+              }
             } else {
-              nextStates[child.id] = nextState;
+              const oldState = safeStates[child.id] || "locked";
+              nextStates[child.id] = (oldState === "completed" || oldState === "in_progress") ? oldState : nextState;
             }
           } else {
             nextStates[child.id] = "locked";
@@ -138,13 +147,25 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
         // 4. Regular child node:
         else {
           const nextState = isParentActive ? "unlocked" : "locked";
-          const oldState = safeStates[child.id] || "locked";
-          if (oldState === "completed" && nextState !== "locked") {
-            nextStates[child.id] = "completed";
-          } else if (oldState === "in_progress" && nextState !== "locked") {
-            nextStates[child.id] = "in_progress";
+          if (nextState !== "locked") {
+            // Dynamically check if child is completed based on safeGoals checklist
+            const childContent = safeCache[child.id];
+            const childGoals = childContent?.goals || [];
+            if (childGoals.length > 0) {
+              const completedCount = childGoals.filter(g => safeGoals.has(g)).length;
+              if (completedCount === childGoals.length) {
+                nextStates[child.id] = "completed";
+              } else if (completedCount > 0) {
+                nextStates[child.id] = "in_progress";
+              } else {
+                nextStates[child.id] = nextState;
+              }
+            } else {
+              const oldState = safeStates[child.id] || "locked";
+              nextStates[child.id] = (oldState === "completed" || oldState === "in_progress") ? oldState : nextState;
+            }
           } else {
-            nextStates[child.id] = nextState;
+            nextStates[child.id] = "locked";
           }
         }
 
@@ -169,7 +190,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       saveCompletedGoalsList(list);
 
       // Propagate locks / unlocks downwards
-      const updatedStates = reevaluateStates(next, userSelections, nodeCache);
+      const updatedStates = reevaluateStates(next, userSelections, nodeCache, nodeStates);
       setNodeStates(updatedStates);
       saveNodeStates(updatedStates);
       return next;
@@ -194,7 +215,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       // Re-evaluate node states with the updated selections
       setTimeout(() => {
         setNodeStates(oldStates => {
-          const nextStates = reevaluateStates(completedGoals, next, nodeCache);
+          const nextStates = reevaluateStates(completedGoals, next, nodeCache, oldStates);
           if (option === undefined) {
             nextStates[nodeId] = "unlocked";
           } else {
@@ -214,7 +235,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
     const fetchUnlockedContent = async () => {
       const unfetchedUnlockedNodes = flatScaffold.filter(n => {
         const state = (nodeStates || {})[n.id] || n.state;
-        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint && !n.isCheckpoint;
+        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint;
       });
 
       if (unfetchedUnlockedNodes.length === 0) return;
@@ -244,7 +265,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
               // Trigger a re-evaluation of states with the new cache data
               setTimeout(() => {
                 setNodeStates(oldStates => {
-                  const nextStates = reevaluateStates(completedGoals, userSelections, updated);
+                  const nextStates = reevaluateStates(completedGoals, userSelections, updated, oldStates);
                   saveNodeStates(nextStates);
                   return nextStates;
                 });
@@ -1070,6 +1091,16 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
     return content && content.goals && content.goals.length > 0;
   });
 
+  // Filter nodes for display in the Goals tab - include checkpoints but skip choice/selection points
+  const nodesForGoalsList = flatNodes.filter(n => {
+    const state = (nodeStates || {})[n.id] || n.state;
+    if (state === "locked") return false;
+    if (n.isSelectionPoint || n.type === "selection") return false;
+    if (n.isCheckpoint || n.type === "checkpoint") return true;
+    const content = (nodeCache || {})[n.id];
+    return content && content.goals && content.goals.length > 0;
+  });
+
   // Check if all preceding goals in unlocked stages are completed
   const allPrecedingGoalsCompleted = activeNodes.every(n => {
     const content = (nodeCache || {})[n.id];
@@ -1119,14 +1150,77 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
         />
 
         <div className="mt-6 space-y-6">
-          {activeNodes.length > 0 ? (
-            activeNodes.map((node) => {
+          {nodesForGoalsList.length > 0 ? (
+            nodesForGoalsList.map((node) => {
               const content = (nodeCache || {})[node.id];
               const goals = content?.goals || [];
+              const achievements = content?.achievements || [];
               const goalReasons = content?.goal_reasons || {};
               const nodeState = (nodeStates || {})[node.id] || node.state;
               const isCollapsed = collapsedNodeIds.has(node.id);
 
+              const isCheckpoint = node.isCheckpoint || node.type === "checkpoint";
+
+              if (isCheckpoint) {
+                return (
+                  <div key={node.id} className="border border-amber-200/80 rounded-2xl bg-amber-50/5 shadow-sm flex flex-col overflow-hidden transition-all duration-300">
+                    {/* Collapsible Header */}
+                    <div 
+                      onClick={() => toggleNodeCollapsed(node.id)}
+                      className="flex items-center justify-between p-5 cursor-pointer hover:bg-amber-55/40 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div 
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-amber-500"
+                        />
+                        <span className="font-extrabold text-sm text-slate-800">{node.label}</span>
+                        <span className="text-[10px] text-amber-700 bg-amber-100 border border-amber-200/80 font-semibold px-2 py-0.5 rounded-full">
+                          ⭐ Milestone Checkpoint
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-emerald-800 font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/60">
+                          Reached ✓
+                        </span>
+                        
+                        <span className={`text-slate-400 font-bold transition-transform duration-200 text-[10px] shrink-0 ${isCollapsed ? "" : "rotate-180"}`}>
+                          ▼
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dropdown collapsible list container */}
+                    <div className={`transition-all duration-300 ease-in-out border-t border-amber-100/40 ${isCollapsed ? "max-h-0 opacity-0 pointer-events-none" : "max-h-[1000px] opacity-100 p-5 pt-4 bg-amber-50/5"}`}>
+                      <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+                        {content?.summary || `You have reached the ${node.label} stage in your career path. Review your milestone achievements below.`}
+                      </p>
+                      
+                      <div className="grid gap-3">
+                        {achievements.length > 0 ? (
+                          achievements.map((ach, idx) => (
+                            <div 
+                              key={idx}
+                              className="flex items-start gap-3.5 p-3.5 rounded-xl border border-amber-250/70 bg-white text-slate-800 shadow-sm"
+                            >
+                              <span className="text-amber-500 text-sm mt-0.5 flex-shrink-0">⭐</span>
+                              <div className="flex-1 text-xs leading-relaxed font-semibold">
+                                {ach}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-4 bg-white border border-slate-100 rounded-xl">
+                            <p className="text-xs text-slate-400 italic">No achievements generated yet. Open this node on the mindmap to compile your achievements narrative.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Normal goals node rendering
               const completedCount = goals.filter(g => completedGoals.has(g)).length;
               const totalCount = goals.length;
 

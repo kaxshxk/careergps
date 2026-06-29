@@ -17,6 +17,7 @@ const V_GAP = 24;   // vertical gap between sibling nodes
 
 function getNodeFill(d) {
   const { type, state } = d.data;
+  if (type === "root") return "url(#grad-root-anim)";
   if (state === "locked") return "#f8fafc";
   if (state === "completed") return "#f0fdf4"; // light green
   if (state === "in_progress") return "#eff6ff"; // light blue
@@ -27,6 +28,7 @@ function getNodeFill(d) {
 
 function getNodeStroke(d) {
   const { type, state, isSelectionPoint } = d.data;
+  if (type === "root") return "#6d28d9";
   if (state === "locked") return "#cbd5e1";
   if (state === "completed") return "#10b981"; // green
   if (state === "in_progress") return "#3b82f6"; // blue
@@ -36,7 +38,8 @@ function getNodeStroke(d) {
 }
 
 function getTextColor(d) {
-  const { state } = d.data;
+  const { state, type } = d.data;
+  if (type === "root") return "#ffffff";
   if (state === "locked") return "#94a3b8"; // muted gray
   if (state === "completed") return "#15803d"; // green
   if (state === "in_progress") return "#1d4ed8"; // blue
@@ -44,7 +47,8 @@ function getTextColor(d) {
 }
 
 function getSubtextColor(d) {
-  const { state } = d.data;
+  const { state, type } = d.data;
+  if (type === "root") return "#e9d5ff";
   if (state === "locked") return "#cbd5e1";
   if (state === "completed") return "#16a34a"; // green
   if (state === "in_progress") return "#2563eb"; // blue
@@ -149,6 +153,17 @@ export default function CareerMindmap({
         }
         return d.target.data.state === "locked" ? baseWidth : baseWidth + 0.5;
       });
+
+    // Link flow opacity
+    svg.selectAll(".link-flow")
+      .transition().duration(200)
+      .attr("opacity", d => {
+        if (activeNode) {
+          const isRelated = relatedIds.has(d.target.data.id) && relatedIds.has(d.source.data.id);
+          return isRelated ? 1.0 : 0.05;
+        }
+        return 1.0;
+      });
   }, [activeNode, treeData]);
 
   // Main render effect
@@ -221,6 +236,14 @@ export default function CareerMindmap({
     pat.append("circle").attr("cx", 1).attr("cy", 1).attr("r", 0.8)
        .attr("fill", "rgba(0,0,0,0.06)");
 
+    // Animated gradient for root node
+    const rootGrad = defs.append("linearGradient")
+      .attr("id", "grad-root-anim")
+      .attr("x1", "0%").attr("y1", "0%")
+      .attr("x2", "100%").attr("y2", "0%");
+    rootGrad.append("stop").attr("offset", "0%").attr("stop-color", "#7c3aed"); // violet-600
+    rootGrad.append("stop").attr("offset", "100%").attr("stop-color", "#2563eb"); // blue-600
+
     // Type gradients
     Object.entries(SCAFFOLD_COLORS).forEach(([type, color]) => {
       const grad = defs.append("linearGradient")
@@ -269,7 +292,7 @@ export default function CareerMindmap({
     }
     isFirstRenderRef.current = false;
 
-    // Curved Bezier connectors
+    // Curved Bezier connectors (Static base links)
     const linkPath = g.selectAll(".link")
       .data(root.links())
       .join("path")
@@ -294,10 +317,39 @@ export default function CareerMindmap({
         return `M${sx},${sy} C${midX},${sy} ${midX},${ty} ${tx},${ty}`;
       });
 
+    // Unlocked links flow overlays (for visual energy flow)
+    const activeLinks = root.links().filter(d => d.target.data.state !== "locked");
+    const linkFlowPath = g.selectAll(".link-flow")
+      .data(activeLinks)
+      .join("path")
+      .attr("class", "link-flow")
+      .attr("fill", "none")
+      .attr("stroke", d => {
+        if (d.target.data.isCheckpoint || d.target.data.type === "checkpoint") return "#fbbf24";
+        if (d.target.data.state === "completed") return "#10b981";
+        return "#7c3aed";
+      })
+      .attr("stroke-width", d => d.source.depth === 0 ? 3.0 : 2.0)
+      .attr("stroke-opacity", 0.35)
+      .attr("stroke-dasharray", "6, 12")
+      .attr("d", d => {
+        const sx = d.source.x + NODE_W;
+        const sy = d.source.y + NODE_H / 2;
+        const tx = d.target.x;
+        const ty = d.target.y + NODE_H / 2;
+        const midX = (sx + tx) / 2;
+        return `M${sx},${sy} C${midX},${sy} ${midX},${ty} ${tx},${ty}`;
+      });
+
     if (hasRendered) {
       linkPath.attr("opacity", 1);
+      linkFlowPath.attr("opacity", 1);
     } else {
       linkPath.attr("opacity", 0)
+        .transition().duration(600).delay((d, i) => i * 12)
+        .attr("opacity", 1);
+      
+      linkFlowPath.attr("opacity", 0)
         .transition().duration(600).delay((d, i) => i * 12)
         .attr("opacity", 1);
     }
@@ -359,6 +411,13 @@ export default function CareerMindmap({
         if (d.data.state !== "locked") {
           onNodeHover(d.data);
           const color = SCAFFOLD_COLORS[d.data.type] || "#6b7280";
+          
+          // Select the entire parent group and scale/translate it slightly
+          d3.select(this.parentNode)
+            .raise() // Bring to front
+            .transition().duration(150)
+            .attr("transform", `translate(${d.x - 3}, ${d.y - 2}) scale(1.04)`);
+
           d3.select(this)
             .transition().duration(150)
             .attr("stroke-width", 2.5)
@@ -367,6 +426,11 @@ export default function CareerMindmap({
       })
       .on("mouseleave", function(event, d) {
         if (d.data.state !== "locked") {
+          // Reset parent group scale and position
+          d3.select(this.parentNode)
+            .transition().duration(150)
+            .attr("transform", `translate(${d.x}, ${d.y}) scale(1.0)`);
+
           d3.select(this)
             .transition().duration(150)
             .attr("stroke-width", d.data.type === "root" ? 2.5 : d.data.state === "completed" ? 2 : 1.5)
@@ -476,8 +540,14 @@ export default function CareerMindmap({
           50% { stroke-width: 3px; opacity: 0.85; }
           100% { stroke-width: 1.5px; opacity: 1; }
         }
+        @keyframes flow-dash {
+          to { stroke-dashoffset: -18; }
+        }
         .node-pulse rect {
           animation: pulse-stroke 2s infinite ease-in-out;
+        }
+        .link-flow {
+          animation: flow-dash 1.0s linear infinite;
         }
       `}</style>
     </div>

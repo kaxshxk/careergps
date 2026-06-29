@@ -95,6 +95,7 @@ export default function MindmapNodePopover({
 
   // Use cached node content or fallback to node's native fields
   const goals = nodeContent?.goals || node.goals || [];
+  const achievements = nodeContent?.achievements || node.achievements || [];
   const skills = nodeContent?.skills || node.skills || [];
   const summary = nodeContent?.summary || node.detail || "";
   const goalReasons = nodeContent?.goal_reasons || node.goal_reasons || {};
@@ -233,8 +234,30 @@ export default function MindmapNodePopover({
           </div>
         )}
 
+        {/* Checkpoint Achievements */}
+        {(node.isCheckpoint || node.type === "checkpoint" || achievements.length > 0) && achievements.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+              Milestone Achievements
+            </p>
+            <div className="space-y-2.5">
+              {achievements.map((ach, idx) => (
+                <div 
+                  key={idx}
+                  className="flex items-start gap-3 p-3.5 rounded-xl border border-amber-200 bg-amber-50/20 text-slate-800"
+                >
+                  <span className="text-amber-500 text-sm mt-0.5 flex-shrink-0">⭐</span>
+                  <div className="flex-1 text-xs leading-normal select-none font-medium">
+                    {ach}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Interactive Goals Checklist */}
-        {!node.isSelectionPoint && goals.length > 0 && (
+        {!node.isSelectionPoint && !node.isCheckpoint && node.type !== "checkpoint" && goals.length > 0 && (
           <div className="space-y-3 pt-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Checklist Goals
@@ -247,7 +270,12 @@ export default function MindmapNodePopover({
                 return (
                   <div 
                     key={idx}
+                    onClick={() => !disabled && onToggleGoal(g)}
                     className={`flex items-start gap-3 p-3 rounded-xl border transition-all duration-200 ${
+                      disabled
+                        ? "bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed"
+                        : "cursor-pointer select-none"
+                    } ${
                       isChecked 
                         ? "bg-emerald-50/40 border-emerald-200 text-slate-800" 
                         : "bg-white border-slate-200 hover:border-slate-350 text-slate-700"
@@ -257,14 +285,18 @@ export default function MindmapNodePopover({
                       type="checkbox"
                       disabled={disabled}
                       checked={isChecked}
-                      onChange={() => onToggleGoal(g)}
-                      className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      readOnly={true}
+                      className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 pointer-events-none disabled:opacity-50"
                     />
-                    <div className="flex-1 text-xs leading-normal select-none pr-1">
+                    <div className="flex-1 text-xs leading-normal pr-1">
                       {g}
                     </div>
                     {/* Lightbulb tooltip icon */}
                     <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
                       onMouseEnter={(e) => handleMouseEnter(e, whyReason)}
                       onMouseLeave={handleMouseLeave}
                       className="text-slate-400 hover:text-amber-500 transition-colors p-0.5 -mt-0.5 flex-shrink-0"

@@ -1,63 +1,64 @@
-# CareerGPS: Smart Career Guidance Engine
+# 🗺️ CareerGPS: Smart Career Guidance Engine
 
-![Python](https://img.shields.io/badge/python-3.11-blue.svg)
-![Tests](https://github.com/kaxshxk/careergps/actions/workflows/test.yml/badge.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+CareerGPS is a premium, interactive web application that acts as a real-time, adaptive career compass. Using Google Gemini AI, it generates tailored study goals, project ideas, and certifications aligned to your current education stage, target career path, and financial budget.
 
-## 💡 The Problem
-Job seekers waste hours manually comparing their skills to job descriptions, missing hidden gaps. Recruiters struggle to identify candidates with nuanced skill matches beyond keyword stuffing.
+---
 
-## 🚀 Our Solution
-CareerGPS is a Flask web app that:
-- Analyzes user profiles against real-time job market data
-- Recommends skill-gap filling courses
-- Visualizes match strength with clean visual charts
-- **Key tech**: Flask, Pandas, WTForms, Pytest, REST APIs
+## 🚀 Key Features
 
-## ✨ Features Shown
-- Secure session handling (env-based secrets, CSRF protection)
-- Input validation & sanitization (OWASP Top 10 compliant)
-- Error-resilient API integration (graceful degradation)
-- Test-driven development (pytest coverage >80%)
-- Container-ready (Dockerfile included)
+* **Kickresume-Style Premium Onboarding**: A beautiful glassmorphic multi-step onboarding wizard capturing stage, target goal, strengths, and weekly availability.
+* **Interactive D3.js Career Mindmap**: Drag to pan, scroll to zoom, and click nodes to view details, mark goals complete, or select choices.
+* **Flowing Mindmap Visuals**: Bezier connectors, marching dash-offset link flow animations (`.link-flow`), scale transitions, and DOM element raising on card hover.
+* **Budget Resource Swapping**: A 3-tier financial selector (Free Only, Affordable, Self-Funded) that instantly swaps out resource suggestions, certifications, and course suggestions.
+* **Bespoke 6-Week Study Schedule**: Grafts a custom weekly study and portfolio project building plan directly into your mindmap using Gemini quizzes.
+* **Bi-Directional Goal Synchronization**: Checking goals on the Dashboard checklist instantly updates the Mindmap states (unlocked, in_progress, completed) and progress percentages in real-time.
+* **Gold Milestone Checkpoints**: Checkpoint nodes (Grade 10/12 Checkpoint, UG Semester Checkpoints) render achievements and milestones in gold cards without checklist checkboxes.
+
+---
+
+## 💻 Tech Stack
+
+* **Frontend**: React 19, Vite, D3.js (Mindmap Visualization), Framer Motion, Vanilla CSS.
+* **Backend Proxy**: Node.js, Express, dotenv, @google/generative-ai SDK.
+* **AI Service**: Google Gemini 1.5 Flash (Structured schema outputs).
+
+---
 
 ## ⚡️ Quick Start
 
-### 🐧 macOS / Linux
-```bash
-git clone https://github.com/kaxshxk/careergps.git
-cd careergps
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(16))")  # Dev only
-python app.py
+### Prerequisites
+* Node.js (v18 or higher)
+* A Google Gemini API Key
+
+### Configuration
+Create a `.env` file at the root of the project:
+```env
+PORT=5000
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
-### 🪟 Windows
-```powershell
-git clone https://github.com/kaxshxk/careergps.git
-cd careergps
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-set SECRET_KEY=your-secure-secret-key
-python app.py
-```
+### Installation & Run
 
-> [!TIP]
-> **Windows Users:** You can also run the pre-configured [start-career-gps.bat](file:///C:/Users/valle/Documents/WORK/careergpsxpathforge/start-career-gps.bat) file at the root of the project to bootstrap and spin up the frontend and backend servers automatically.
+1. Install dependencies at the root level:
+   ```bash
+   npm install
+   ```
 
-Visit http://localhost:5000
+2. Boot up both the Express Backend Proxy (port 5000) and the Vite development server (port 5173):
+   * **Windows**: Simply double-click the [start-career-gps.bat](file:///C:/Users/valle/Documents/WORK/careergpsxpathforge/start-career-gps.bat) script at the root.
+   * **macOS / Linux / Manual Windows**: Open two terminal windows and run:
+     ```bash
+     # Terminal 1: Backend
+     node server/index.js
 
+     # Terminal 2: Frontend
+     npm run dev -- --port 5173
+     ```
 
-## 🧪 Run Tests
-```bash
-pytest -q  # Should show all tests passing
-```
+3. Open http://127.0.0.1:5173/ in your browser.
 
-## 💻 Try It Live
-▶️ Launch in GitHub Codespaces
+---
 
 ## 📜 License
 MIT © kaxshxk

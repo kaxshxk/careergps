@@ -79,7 +79,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
   }, [flatScaffold]);
 
   // ── Recalculate states recursively based on checklist completion ──
-  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache) => {
+  const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache, currentStates) => {
     // Start with a default scaffold
     const root = buildMindmapScaffold(profile, {});
     const flat = flattenScaffold(root);
@@ -94,12 +94,12 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       nextStates[startNode.id] = "unlocked";
     }
 
+    const safeGoals = currentGoals || new Set();
     const safeCache = currentCache || {};
-    const safeStates = nodeStates || {};
+    const safeStates = currentStates || nodeStates || {};
 
     function walk(node) {
       const state = nextStates[node.id] || "locked";
-      const content = safeCache[node.id];
       
       // Unlocks children if parent is active (not locked)
       const isParentActive = state !== "locked";
@@ -111,13 +111,21 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
           const isSingleChild = node.children.length === 1;
           if (selection && (isSingleChild || child.label === selection)) {
             const nextState = "unlocked";
-            const oldState = safeStates[child.id] || "locked";
-            if (oldState === "completed") {
-              nextStates[child.id] = "completed";
-            } else if (oldState === "in_progress") {
-              nextStates[child.id] = "in_progress";
+            // Dynamically check if child is completed based on safeGoals checklist
+            const childContent = safeCache[child.id];
+            const childGoals = childContent?.goals || [];
+            if (childGoals.length > 0) {
+              const completedCount = childGoals.filter(g => safeGoals.has(g)).length;
+              if (completedCount === childGoals.length) {
+                nextStates[child.id] = "completed";
+              } else if (completedCount > 0) {
+                nextStates[child.id] = "in_progress";
+              } else {
+                nextStates[child.id] = nextState;
+              }
             } else {
-              nextStates[child.id] = nextState;
+              const oldState = safeStates[child.id] || "locked";
+              nextStates[child.id] = (oldState === "completed" || oldState === "in_progress") ? oldState : nextState;
             }
           } else {
             nextStates[child.id] = "locked";
@@ -139,13 +147,25 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         // 4. Regular child node:
         else {
           const nextState = isParentActive ? "unlocked" : "locked";
-          const oldState = safeStates[child.id] || "locked";
-          if (oldState === "completed" && nextState !== "locked") {
-            nextStates[child.id] = "completed";
-          } else if (oldState === "in_progress" && nextState !== "locked") {
-            nextStates[child.id] = "in_progress";
+          if (nextState !== "locked") {
+            // Dynamically check if child is completed based on safeGoals checklist
+            const childContent = safeCache[child.id];
+            const childGoals = childContent?.goals || [];
+            if (childGoals.length > 0) {
+              const completedCount = childGoals.filter(g => safeGoals.has(g)).length;
+              if (completedCount === childGoals.length) {
+                nextStates[child.id] = "completed";
+              } else if (completedCount > 0) {
+                nextStates[child.id] = "in_progress";
+              } else {
+                nextStates[child.id] = nextState;
+              }
+            } else {
+              const oldState = safeStates[child.id] || "locked";
+              nextStates[child.id] = (oldState === "completed" || oldState === "in_progress") ? oldState : nextState;
+            }
           } else {
-            nextStates[child.id] = nextState;
+            nextStates[child.id] = "locked";
           }
         }
 
@@ -186,7 +206,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
             saveNodeCache(updatedCache);
             
             // Re-evaluate states
-            const updatedStates = reevaluateStates(completedGoals, userSelections, updatedCache);
+            const updatedStates = reevaluateStates(completedGoals, userSelections, updatedCache, nodeStates);
             setNodeStates(updatedStates);
             saveNodeStates(updatedStates);
           }
@@ -204,7 +224,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     const fetchUnlockedContent = async () => {
       const unfetchedUnlockedNodes = flatScaffold.filter(n => {
         const state = (nodeStates || {})[n.id] || n.state;
-        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint && !n.isCheckpoint;
+        return state !== "locked" && !(nodeCache || {})[n.id] && !n.isSelectionPoint;
       });
 
       if (unfetchedUnlockedNodes.length === 0) return;
@@ -234,7 +254,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               // Trigger a re-evaluation of states with the new cache data
               setTimeout(() => {
                 setNodeStates(oldStates => {
-                  const nextStates = reevaluateStates(completedGoals, userSelections, updated);
+                  const nextStates = reevaluateStates(completedGoals, userSelections, updated, oldStates);
                   saveNodeStates(nextStates);
                   return nextStates;
                 });
@@ -278,7 +298,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         saveNodeCache(updatedCache);
 
         // Re-evaluate states after new content is loaded
-        const updatedStates = reevaluateStates(completedGoals, userSelections, updatedCache);
+        const updatedStates = reevaluateStates(completedGoals, userSelections, updatedCache, nodeStates);
         setNodeStates(updatedStates);
         saveNodeStates(updatedStates);
       }
@@ -365,7 +385,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       const nextStates = { ...nodeStates, [activeNode.id]: nextState };
       
       // Propagate locks / unlocks downwards
-      const updatedStates = reevaluateStates(next, userSelections, nodeCache);
+      const updatedStates = reevaluateStates(next, userSelections, nodeCache, nodeStates);
       // Merge nextState of current activeNode
       updatedStates[activeNode.id] = nextState;
 
@@ -393,7 +413,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       } else {
         nextStates[nodeId] = "completed";
       }
-      const updatedStates = reevaluateStates(completedGoals, next, nodeCache);
+      const updatedStates = reevaluateStates(completedGoals, next, nodeCache, nodeStates);
       updatedStates[nodeId] = option === undefined ? "unlocked" : "completed";
 
       setNodeStates(updatedStates);
