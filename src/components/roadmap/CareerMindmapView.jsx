@@ -97,39 +97,43 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       const state = nextStates[node.id] || "locked";
       const content = safeCache[node.id];
       
-      // Determine if parent is done / unlocked
-      const goalsList = content?.goals || [];
-      const completedList = goalsList.filter(g => currentGoals.has(g));
-      const percentComplete = goalsList.length ? (completedList.length / goalsList.length) : 0;
-      
-      const isParentCompleted = state === "completed" || percentComplete >= 1.0;
-      const isParent80Percent = percentComplete >= 0.8;
-
-      // Unlocks children if parent is >= 80% done
+      // Unlocks children if parent is active (not locked)
+      const isParentActive = state !== "locked";
       const selection = node.isSelectionPoint ? currentSelections[node.id] : null;
 
       for (const child of node.children) {
-        // Lock unselected child paths if parent is a choice node with multiple branches
-        if (node.isSelectionPoint && node.children.length > 1 && selection && child.label !== selection) {
-          nextStates[child.id] = "locked";
-          walk(child);
-          continue;
-        }
-
-        if (child.isSelectionPoint) {
-          const selection = currentSelections[child.id];
-          if (selection) {
+        // 1. If parent is a selection point:
+        if (node.isSelectionPoint) {
+          if (selection && child.label === selection) {
+            const nextState = "unlocked";
+            const oldState = safeStates[child.id] || "locked";
+            if (oldState === "completed") {
+              nextStates[child.id] = "completed";
+            } else if (oldState === "in_progress") {
+              nextStates[child.id] = "in_progress";
+            } else {
+              nextStates[child.id] = nextState;
+            }
+          } else {
+            nextStates[child.id] = "locked";
+          }
+        } 
+        // 2. If child is a selection point itself:
+        else if (child.isSelectionPoint) {
+          const childSelection = currentSelections[child.id];
+          if (childSelection) {
             nextStates[child.id] = "completed";
           } else {
-            nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
+            nextStates[child.id] = isParentActive ? "unlocked" : "locked";
           }
-        } else if (child.isCheckpoint) {
-          nextStates[child.id] = (isParent80Percent || isParentCompleted) ? "completed" : "locked";
-        } else {
-          // Regular node: unlocked if parent is at least 80% complete
-          const nextState = (isParent80Percent || isParentCompleted) ? "unlocked" : "locked";
-          
-          // Preserve custom state if it was in_progress or completed
+        } 
+        // 3. If child is a checkpoint:
+        else if (child.isCheckpoint) {
+          nextStates[child.id] = isParentActive ? "completed" : "locked";
+        } 
+        // 4. Regular child node:
+        else {
+          const nextState = isParentActive ? "unlocked" : "locked";
           const oldState = safeStates[child.id] || "locked";
           if (oldState === "completed" && nextState !== "locked") {
             nextStates[child.id] = "completed";
@@ -139,6 +143,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
             nextStates[child.id] = nextState;
           }
         }
+
         walk(child);
       }
     }
