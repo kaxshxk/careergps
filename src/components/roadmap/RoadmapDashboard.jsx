@@ -1182,10 +1182,17 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
             else if (fieldType === "COMMERCE") recPgCourse = "MBA (Management/Finance)";
             else if (fieldType === "LAW" || fieldType === "ARTS") recPgCourse = "MA (Arts/Humanities/Law)";
 
+            // Check if all preceding goals in unlocked stages are completed
+            const allPrecedingGoalsCompleted = activeNodes.every(n => {
+              const content = (nodeCache || {})[n.id];
+              const goalsList = content?.goals || [];
+              return goalsList.every(g => completedGoals.has(g));
+            });
+
             return (
               <div className="mt-8 space-y-6 pt-6 border-t border-slate-200/60">
                 {/* ── UNLOCKED / ACTIVE SELECTIONS ── */}
-                {activeSelNodes.map(node => {
+                {allPrecedingGoalsCompleted && activeSelNodes.map(node => {
                   const isExpanded = expandedSelId === node.id;
                   
                   return (
