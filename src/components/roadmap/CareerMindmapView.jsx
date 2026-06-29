@@ -288,10 +288,13 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
   };
 
   const handleNodeClick = useCallback((node) => {
-    // If it's a selection node, redirect to the dashboard goals section
+    // If it's a selection node, redirect to dashboard only if not yet chosen/filled
     if (node.type === "selection" || node.id.includes("-select")) {
-      onGoToDashboard();
-      return;
+      const selection = userSelections[node.id];
+      if (!selection) {
+        onGoToDashboard();
+        return;
+      }
     }
 
     setActiveNode(node);
