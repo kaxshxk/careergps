@@ -72,19 +72,24 @@ function makeCareerGoalNode(profile, parentId) {
 // ─────────────────────────────────────────────────────────
 // Post-college branch: Junior Role → Mid-Level → Senior → Career Goal
 // ─────────────────────────────────────────────────────────
-function buildCareerProgressionChain(profile, parentId, startDepth) {
+function buildCareerProgressionChain(profile, parentId, startDepth, idPrefix = "") {
   const goalLabel = profile.goal?.description || "Career Goal";
-  const juniorNode = snode("node-junior-role", "Junior Role", "stage", {
+  const juniorId = idPrefix ? `${idPrefix}-junior-role` : "node-junior-role";
+  const midId = idPrefix ? `${idPrefix}-mid-level` : "node-mid-level";
+  const seniorId = idPrefix ? `${idPrefix}-senior-role` : "node-senior-role";
+  const goalId = idPrefix ? `${idPrefix}-career-goal` : "node-career-goal";
+
+  const juniorNode = snode(juniorId, "Junior Role", "stage", {
     state: "locked", depth: startDepth, parentId,
   });
-  const midNode = snode("node-mid-level", "Mid-Level Role", "stage", {
-    state: "locked", depth: startDepth + 1, parentId: "node-junior-role",
+  const midNode = snode(midId, "Mid-Level Role", "stage", {
+    state: "locked", depth: startDepth + 1, parentId: juniorId,
   });
-  const seniorNode = snode("node-senior-role", "Senior Role", "stage", {
-    state: "locked", depth: startDepth + 2, parentId: "node-mid-level",
+  const seniorNode = snode(seniorId, "Senior Role", "stage", {
+    state: "locked", depth: startDepth + 2, parentId: midId,
   });
-  const goalNode = snode("node-career-goal", goalLabel, "goal", {
-    state: "locked", depth: startDepth + 3, parentId: "node-senior-role",
+  const goalNode = snode(goalId, goalLabel, "goal", {
+    state: "locked", depth: startDepth + 3, parentId: seniorId,
     isFinalGoal: true, color: SCAFFOLD_COLORS.goal,
   });
   seniorNode.children = [goalNode];
@@ -103,9 +108,9 @@ function buildPostGradSelection(profile, parentId, depth) {
     color: SCAFFOLD_COLORS.selection,
   });
 
-  const juniorBranch = buildCareerProgressionChain(profile, selNode.id, depth + 1);
+  const juniorBranch = buildCareerProgressionChain(profile, selNode.id, depth + 1, "workforce");
   juniorBranch.label = "→ Enter Workforce";
-  juniorBranch.id = "node-junior-branch";
+  juniorBranch.id = "workforce-junior-branch";
 
   const mastersBranch = snode("node-masters-select", "→ Masters Degree", "selection", {
     state: "locked", depth: depth + 1, parentId: selNode.id,
@@ -123,7 +128,7 @@ function buildPostGradSelection(profile, parentId, depth) {
     state: "locked", depth: depth + 4, parentId: pgY2.id,
     isCheckpoint: true, color: SCAFFOLD_COLORS.checkpoint,
   });
-  const pgCareer = buildCareerProgressionChain(profile, pgCheckpoint.id, depth + 5);
+  const pgCareer = buildCareerProgressionChain(profile, pgCheckpoint.id, depth + 5, "pg");
   pgCheckpoint.children = [pgCareer];
   pgY2.children = [pgCheckpoint];
   pgY1.children = [pgY2];
@@ -248,7 +253,7 @@ function buildWorkingPath(profile, parentId, startDepth) {
   }
 
   // Career progression after Year 2 Q2
-  const careerProg = buildCareerProgressionChain(profile, quarterNodes[5].id, startDepth + QUARTERS.length);
+  const careerProg = buildCareerProgressionChain(profile, quarterNodes[5].id, startDepth + QUARTERS.length, "working");
   quarterNodes[5].children.push(careerProg);
 
   return quarterNodes[0];
@@ -425,7 +430,7 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
         state: "locked", depth: 2.5, parentId: pgY2.id,
         isCheckpoint: true, color: SCAFFOLD_COLORS.checkpoint,
       });
-      const careerProg = buildCareerProgressionChain(profile, pgCp.id, 3);
+      const careerProg = buildCareerProgressionChain(profile, pgCp.id, 3, "pg");
       pgCp.children = [careerProg];
       pgY2.children = [pgCp];
       pgY1.children = [pgY2];
