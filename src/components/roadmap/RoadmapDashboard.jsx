@@ -1146,7 +1146,8 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
                         return (
                           <div 
                             key={idx}
-                            className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all duration-200 ${
+                            onClick={() => onToggleGoal(goal)}
+                            className={`flex items-start gap-3.5 p-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none ${
                               isChecked 
                                 ? "bg-emerald-50/20 border-emerald-250 text-slate-800" 
                                 : "bg-white border-slate-200 hover:border-slate-350 text-slate-700"
@@ -1155,14 +1156,15 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
                             <input
                               type="checkbox"
                               checked={isChecked}
-                              onChange={() => onToggleGoal(goal)}
+                              readOnly={true}
                               className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
                             />
-                            <div className="flex-1 text-sm leading-relaxed select-none">
+                            <div className="flex-1 text-sm leading-relaxed">
                               {goal}
                             </div>
                             
                             <button
+                              onClick={(e) => e.stopPropagation()} // Stop event bubbling so lightbulb click doesn't toggle completion
                               onMouseEnter={(e) => handleMouseEnter(e, whyReason)}
                               onMouseLeave={handleMouseLeave}
                               className="text-slate-400 hover:text-amber-500 transition-colors p-0.5 flex-shrink-0"
