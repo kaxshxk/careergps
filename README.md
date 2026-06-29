@@ -22,6 +22,8 @@ CareerGPS is a Flask web app that:
 - Container-ready (Dockerfile included)
 
 ## ⚡️ Quick Start
+
+### 🐧 macOS / Linux
 ```bash
 git clone https://github.com/kaxshxk/careergps.git
 cd careergps
@@ -31,7 +33,23 @@ pip install -r requirements.txt
 export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(16))")  # Dev only
 python app.py
 ```
+
+### 🪟 Windows
+```powershell
+git clone https://github.com/kaxshxk/careergps.git
+cd careergps
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+set SECRET_KEY=your-secure-secret-key
+python app.py
+```
+
+> [!TIP]
+> **Windows Users:** You can also run the pre-configured [start-career-gps.bat](file:///C:/Users/valle/Documents/WORK/careergpsxpathforge/start-career-gps.bat) file at the root of the project to bootstrap and spin up the frontend and backend servers automatically.
+
 Visit http://localhost:5000
+
 
 ## 🧪 Run Tests
 ```bash

@@ -40,17 +40,15 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_ACTUAL_GEMINI_API_KEY") {
+  throw new Error("GEMINI_API_KEY is not configured. Set it in your .env file before starting the server.");
+}
 // The user asked to use gemini-3.1-flash, or a similar standard model name.
 // We default to "gemini-2.5-flash" (or "gemini-1.5-flash" if 2.5-flash is not available).
 // This env variable allows the user to override the model if they want (e.g. to gemini-1.5-flash or gemini-2.5-flash).
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-if (!GEMINI_API_KEY) {
-  console.warn("WARNING: GEMINI_API_KEY is not defined in the environment variables!");
-  console.warn("Please create a .env file and set GEMINI_API_KEY=your_actual_api_key.");
-}
-
-const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Programmatically build the decision tree nodes linearly from milestones to ensure absolute Zod compliance
 function buildTreeFromGoals(goalText, goalsToAchieve, collegeCourses, internships, certifications, alternatePaths) {

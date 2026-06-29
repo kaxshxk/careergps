@@ -111,8 +111,8 @@ export default function MarketIntelligence({ profile }) {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-500/20 bg-red-50 p-4 text-sm text-red-700 font-semibold">
-          Error: {error}
+        <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 text-sm text-slate-500 italic">
+          Job market data is temporarily unavailable
         </div>
       )}
 

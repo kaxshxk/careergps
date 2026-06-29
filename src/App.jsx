@@ -5,6 +5,7 @@ import RoadmapDashboard from "./components/roadmap/RoadmapDashboard";
 import CareerMindmapView from "./components/roadmap/CareerMindmapView";
 import TimelineView from "./components/timeline/TimelineView";
 import WelcomePage from "./components/WelcomePage";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { generateMockRoadmap } from "./data/mockRoadmapGenerator";
 import {
   loadFinancialTier,
@@ -114,37 +115,43 @@ export default function App() {
 
   if (view === VIEWS.timeline && profile && roadmap) {
     return (
-      <TimelineView
-        profile={profile}
-        roadmap={roadmap}
-        onGoToDashboard={() => setView(VIEWS.roadmap)}
-        onReset={handleReset}
-        onProfileUpdate={handleProfileComplete}
-      />
+      <ErrorBoundary onReset={handleReset}>
+        <TimelineView
+          profile={profile}
+          roadmap={roadmap}
+          onGoToDashboard={() => setView(VIEWS.roadmap)}
+          onReset={handleReset}
+          onProfileUpdate={handleProfileComplete}
+        />
+      </ErrorBoundary>
     );
   }
 
   if (view === VIEWS.roadmap && profile && roadmap) {
     return (
-      <RoadmapDashboard
-        profile={profile}
-        roadmap={roadmap}
-        initialFinancialTier={savedFinancialTier}
-        onReset={handleReset}
-        onViewTimeline={() => setView(VIEWS.timeline)}
-        onViewMindmap={() => setView(VIEWS.mindmap)}
-        onProfileUpdate={handleProfileComplete}
-      />
+      <ErrorBoundary onReset={handleReset}>
+        <RoadmapDashboard
+          profile={profile}
+          roadmap={roadmap}
+          initialFinancialTier={savedFinancialTier}
+          onReset={handleReset}
+          onViewTimeline={() => setView(VIEWS.timeline)}
+          onViewMindmap={() => setView(VIEWS.mindmap)}
+          onProfileUpdate={handleProfileComplete}
+        />
+      </ErrorBoundary>
     );
   }
 
   if (view === VIEWS.mindmap && profile && roadmap) {
     return (
-      <CareerMindmapView
-        profile={profile}
-        roadmap={roadmap}
-        onGoToDashboard={() => setView(VIEWS.roadmap)}
-      />
+      <ErrorBoundary onReset={handleReset}>
+        <CareerMindmapView
+          profile={profile}
+          roadmap={roadmap}
+          onGoToDashboard={() => setView(VIEWS.roadmap)}
+        />
+      </ErrorBoundary>
     );
   }
 

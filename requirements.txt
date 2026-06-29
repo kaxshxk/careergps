@@ -4,3 +4,4 @@ Flask-WTF==1.1.1
 gunicorn==21.2.0
 requests==2.31.0
 pandas==3.0.1
+Flask-Limiter==3.8.0
