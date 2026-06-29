@@ -9,7 +9,9 @@ import {
   loadNodeStates,
   saveNodeStates,
   loadCompletedGoalsList,
-  saveCompletedGoalsList
+  saveCompletedGoalsList,
+  loadUserSelections,
+  saveUserSelections
 } from "../../services/localStorageService";
 import { buildMindmapScaffold, flattenScaffold, calculateProgress, SCAFFOLD_COLORS } from "../../data/scaffoldBuilder";
 import CareerMindmap from "./CareerMindmap";
@@ -23,10 +25,6 @@ const LEGEND = [
   { type: "semester",    label: "Semester Phase" },
   { type: "selection",   label: "Choice Point" },
   { type: "checkpoint",  label: "Checkpoint Node" },
-  { type: "cert",       label: "Certification" },
-  { type: "internship", label: "Internship" },
-  { type: "goal",       label: "Career Goal" },
-  { type: "alternate",  label: "Alternate Path" },
   { type: "skill",      label: "Skills to Build" },
 ];
 
@@ -35,20 +33,6 @@ const TIER_OPTIONS = [
   { value: "MEDIUM", label: "Affordable",  desc: "Low-cost options" },
   { value: "HIGH",   label: "Self-funded", desc: "All options" },
 ];
-
-// Helper to load/save user choices locally
-const loadUserSelections = () => {
-  try {
-    const raw = localStorage.getItem("career-gps:user-selections");
-    return raw ? JSON.parse(raw) : {};
-  } catch (e) { return {}; }
-};
-
-const saveUserSelections = (selections) => {
-  try {
-    localStorage.setItem("career-gps:user-selections", JSON.stringify(selections));
-  } catch (e) {}
-};
 
 export default function CareerMindmapView({ profile, roadmap, onGoToDashboard }) {
   // ── State ──
@@ -122,7 +106,16 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
       const isParent80Percent = percentComplete >= 0.8;
 
       // Unlocks children if parent is >= 80% done
+      const selection = node.isSelectionPoint ? currentSelections[node.id] : null;
+
       for (const child of node.children) {
+        // Lock unselected child paths if parent is a choice node with multiple branches
+        if (node.isSelectionPoint && node.children.length > 1 && selection && child.label !== selection) {
+          nextStates[child.id] = "locked";
+          walk(child);
+          continue;
+        }
+
         if (child.isSelectionPoint) {
           const selection = currentSelections[child.id];
           if (selection) {
@@ -360,16 +353,28 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
 
   // ── Selection Point choice select handler ──
   const handleSelectOption = useCallback((nodeId, option) => {
-    const updatedSelections = { ...userSelections, [nodeId]: option };
-    setUserSelections(updatedSelections);
-    saveUserSelections(updatedSelections);
+    setUserSelections(prev => {
+      const next = { ...prev };
+      if (option === undefined) {
+        delete next[nodeId];
+      } else {
+        next[nodeId] = option;
+      }
+      saveUserSelections(next);
 
-    const nextStates = { ...nodeStates, [nodeId]: "completed" };
-    const updatedStates = reevaluateStates(completedGoals, updatedSelections, nodeCache);
-    updatedStates[nodeId] = "completed";
+      const nextStates = { ...nodeStates };
+      if (option === undefined) {
+        nextStates[nodeId] = "unlocked";
+      } else {
+        nextStates[nodeId] = "completed";
+      }
+      const updatedStates = reevaluateStates(completedGoals, next, nodeCache);
+      updatedStates[nodeId] = option === undefined ? "unlocked" : "completed";
 
-    setNodeStates(updatedStates);
-    saveNodeStates(updatedStates);
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+      return next;
+    });
 
     // Expand selection child node auto
     const node = flatScaffold.find(n => n.id === nodeId);

@@ -16,7 +16,9 @@ import {
   loadNodeStates,
   saveNodeStates,
   loadCompletedGoalsList,
-  saveCompletedGoalsList
+  saveCompletedGoalsList,
+  loadUserSelections,
+  saveUserSelections
 } from "../../services/localStorageService";
 
 import {
@@ -105,7 +107,16 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       const isParentCompleted = state === "completed" || percentComplete >= 1.0;
       const isParent80Percent = percentComplete >= 0.8;
 
+      const selection = node.isSelectionPoint ? currentSelections[node.id] : null;
+
       for (const child of node.children) {
+        // Lock unselected child paths if parent is a choice node with multiple branches
+        if (node.isSelectionPoint && node.children.length > 1 && selection && child.label !== selection) {
+          nextStates[child.id] = "locked";
+          walk(child);
+          continue;
+        }
+
         if (child.isSelectionPoint) {
           const selection = currentSelections[child.id];
           if (selection) {
@@ -158,6 +169,34 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
     const root = buildMindmapScaffold(profile, nodeStates);
     return flattenScaffold(root);
   }, [profile, nodeStates]);
+
+  const handleSelectOption = useCallback((nodeId, option) => {
+    setUserSelections(prev => {
+      const next = { ...prev };
+      if (option === undefined) {
+        delete next[nodeId];
+      } else {
+        next[nodeId] = option;
+      }
+      saveUserSelections(next);
+
+      // Re-evaluate node states with the updated selections
+      setTimeout(() => {
+        setNodeStates(oldStates => {
+          const nextStates = reevaluateStates(completedGoals, next, nodeCache);
+          if (option === undefined) {
+            nextStates[nodeId] = "unlocked";
+          } else {
+            nextStates[nodeId] = "completed";
+          }
+          saveNodeStates(nextStates);
+          return nextStates;
+        });
+      }, 0);
+
+      return next;
+    });
+  }, [completedGoals, nodeCache, reevaluateStates]);
 
   // Eagerly pre-fetch content for any unlocked nodes in the background
   useEffect(() => {
@@ -487,6 +526,8 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             onToggleGoal={handleToggleGoal}
             nodeCache={nodeCache}
             nodeStates={nodeStates}
+            userSelections={userSelections}
+            onSelectOption={handleSelectOption}
           />
         </section>
 
@@ -622,6 +663,8 @@ function ActiveSection({
   onToggleGoal,
   nodeCache,
   nodeStates,
+  userSelections,
+  onSelectOption,
 }) {
   const [deepTab, setDeepTab] = useState("study");
 
@@ -972,12 +1015,19 @@ function ActiveSection({
       onToggleGoal={onToggleGoal}
       nodeCache={nodeCache}
       nodeStates={nodeStates}
+      userSelections={userSelections}
+      onSelectOption={onSelectOption}
     />
   );
 }
 
-function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates }) {
+function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, userSelections, onSelectOption }) {
   const [tooltip, setTooltip] = useState(null);
+  const [selBoard, setSelBoard] = useState("");
+  const [selStream, setSelStream] = useState("");
+  const [selTier, setSelTier] = useState("");
+  const [selUgCourse, setSelUgCourse] = useState("");
+  const [expandedSelId, setExpandedSelId] = useState(null);
 
   const scaffold = buildMindmapScaffold(profile, nodeStates);
   const flatNodes = flattenScaffold(scaffold);
@@ -1089,6 +1139,333 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates })
               <p className="text-xs text-slate-400 mt-1">Visit the Career Mindmap first to load your starting path nodes.</p>
             </div>
           )}
+
+          {/* Guided Branch/Option Selection Cards */}
+          {(() => {
+            // Find any active/unlocked selection node in flatNodes
+            const activeSelNodes = flatNodes.filter(n => {
+              if (!n.isSelectionPoint) return false;
+              const state = (nodeStates || {})[n.id] || n.state;
+              return state === "unlocked" || state === "in_progress";
+            });
+
+            // Find any completed selections to show as history/read-only with reset button
+            const doneSelNodes = flatNodes.filter(n => {
+              if (!n.isSelectionPoint) return false;
+              const state = (nodeStates || {})[n.id] || n.state;
+              return state === "completed" && (userSelections || {})[n.id];
+            });
+
+            // Recommended calculations based on profile
+            const fieldType = profile.field?.type || "TECH";
+            let recUg = "B.Tech / B.E. (Computer Science/IT)";
+            if (fieldType === "SCIENCE") recUg = "B.Sc (Sciences/Biotech)";
+            else if (fieldType === "COMMERCE") recUg = "B.Com / BBA (Business/Finance)";
+            else if (fieldType === "LAW" || fieldType === "ARTS") recUg = "BA (Arts/Humanities/Law)";
+            else if (fieldType === "MEDICINE") recUg = "MBBS / BDS (Medicine)";
+
+            let recPg = "→ Enter Workforce";
+            if (profile.goal?.type === "HIGHER_STUDIES") recPg = "→ Masters Degree";
+
+            let recPgCourse = "M.Tech / MS (Computer Science/IT)";
+            if (fieldType === "SCIENCE") recPgCourse = "M.Sc (Sciences)";
+            else if (fieldType === "COMMERCE") recPgCourse = "MBA (Management/Finance)";
+            else if (fieldType === "LAW" || fieldType === "ARTS") recPgCourse = "MA (Arts/Humanities/Law)";
+
+            return (
+              <div className="mt-8 space-y-6 pt-6 border-t border-slate-200/60">
+                {/* ── UNLOCKED / ACTIVE SELECTIONS ── */}
+                {activeSelNodes.map(node => {
+                  const isExpanded = expandedSelId === node.id;
+                  
+                  return (
+                    <div 
+                      key={node.id} 
+                      className={`rounded-2xl border transition-all duration-300 ${
+                        isExpanded 
+                          ? "border-cyan-300 bg-cyan-50/10 shadow-lg shadow-cyan-500/5 p-6" 
+                          : "border-cyan-200/80 bg-gradient-to-r from-cyan-50/30 to-sky-50/20 hover:border-cyan-300/90 p-5 shadow-sm"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex gap-3">
+                          <span className="text-2xl mt-0.5">🧭</span>
+                          <div>
+                            <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
+                            <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
+                              {node.id === "node-board-select" && "You've completed 10th Grade! Choose your Board and specialized high school Stream below to unlock the next milestones."}
+                              {node.id === "node-ug-select" && "You've completed 12th Grade / Diploma! Choose the College Tier you joined and your UG field course to unlock college semester goals."}
+                              {node.id === "node-postgrad-select" && "You've completed your UG degree! Choose whether you want to enter the workforce directly or continue with a Master's degree."}
+                              {node.id === "node-masters-select" && "You've chosen to pursue a Master's degree! Select your PG course specialization to unlock the PG path goals."}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {!isExpanded && (
+                          <button
+                            onClick={() => setExpandedSelId(node.id)}
+                            className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md transition-all shrink-0"
+                          >
+                            Choose Now
+                          </button>
+                        )}
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-6 border-t border-cyan-100 pt-5 space-y-5 animate-fade-in">
+                          {/* Board & Stream Form */}
+                          {node.id === "node-board-select" && (
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">1. Select Board</label>
+                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                  {["CBSE", "State Board (Inter)", "Polytechnic Diploma"].map(opt => (
+                                    <button
+                                      key={opt}
+                                      onClick={() => {
+                                        setSelBoard(opt);
+                                        if (opt === "Polytechnic Diploma") setSelStream(""); // Diploma has no high-school streams
+                                      }}
+                                      className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                        selBoard === opt 
+                                          ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
+                                          : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
+                                      }`}
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {selBoard && selBoard !== "Polytechnic Diploma" && (
+                                <div className="animate-fade-in">
+                                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">2. Select Stream Branch</label>
+                                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                    {["Science (PCM/B)", "Commerce", "Arts/Humanities"].map(opt => (
+                                      <button
+                                        key={opt}
+                                        onClick={() => setSelStream(opt)}
+                                        className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                          selStream === opt 
+                                            ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
+                                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
+                                        }`}
+                                      >
+                                        {opt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex justify-end gap-3 pt-4 border-t border-cyan-100/60">
+                                <button
+                                  onClick={() => setExpandedSelId(null)}
+                                  className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl transition"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  disabled={!selBoard || (selBoard !== "Polytechnic Diploma" && !selStream)}
+                                  onClick={() => {
+                                    const val = selBoard === "Polytechnic Diploma" ? selBoard : `${selBoard} - ${selStream}`;
+                                    onSelectOption(node.id, val);
+                                    setExpandedSelId(null);
+                                  }}
+                                  className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+                                >
+                                  Confirm Selection
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* College Tier & UG Course Form */}
+                          {node.id === "node-ug-select" && (
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">1. Select College Tier Joined</label>
+                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                  {["Tier 1 (Top Tier/National)", "Tier 2 (Good State/Private)", "Tier 3 (Local College)"].map(opt => (
+                                    <button
+                                      key={opt}
+                                      onClick={() => setSelTier(opt.split(" ")[0] + " " + opt.split(" ")[1])} // e.g. "Tier 1"
+                                      className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                                        selTier === (opt.split(" ")[0] + " " + opt.split(" ")[1])
+                                          ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
+                                          : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
+                                      }`}
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">2. Select UG degree course</label>
+                                <div className="mt-2 flex flex-col gap-2.5">
+                                  {[
+                                    "B.Tech / B.E. (Computer Science/IT)",
+                                    "B.Sc (Sciences/Biotech)",
+                                    "B.Com / BBA (Business/Finance)",
+                                    "BA (Arts/Humanities/Law)",
+                                    "MBBS / BDS (Medicine)"
+                                  ].map(opt => {
+                                    const isRecommended = opt.toLowerCase().includes(recUg.split(" ")[0].toLowerCase().replace("b.tech", "b.tech").replace("b.sc", "b.sc").replace("b.com", "b.com").slice(0,6));
+                                    return (
+                                      <button
+                                        key={opt}
+                                        onClick={() => setSelUgCourse(opt)}
+                                        className={`p-3.5 rounded-xl border text-xs font-bold text-left transition-all flex justify-between items-center ${
+                                          selUgCourse === opt 
+                                            ? "bg-cyan-600 border-cyan-600 text-white shadow-md shadow-cyan-600/10" 
+                                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-350"
+                                        }`}
+                                      >
+                                        <span>{opt}</span>
+                                        {isRecommended && (
+                                          <span className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                                            selUgCourse === opt 
+                                              ? "bg-cyan-700 border-cyan-500 text-cyan-100" 
+                                              : "bg-amber-100 border-amber-200 text-amber-800"
+                                          }`}>
+                                            Recommended ⭐
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <div className="flex justify-end gap-3 pt-4 border-t border-cyan-100/60">
+                                <button
+                                  onClick={() => setExpandedSelId(null)}
+                                  className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl transition"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  disabled={!selTier || !selUgCourse}
+                                  onClick={() => {
+                                    onSelectOption(node.id, `${selTier} - ${selUgCourse}`);
+                                    setExpandedSelId(null);
+                                  }}
+                                  className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition"
+                                >
+                                  Confirm Selection
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Post-graduation Pathway Form */}
+                          {node.id === "node-postgrad-select" && (
+                            <div className="space-y-4">
+                              <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Select your pathway</label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {["→ Enter Workforce", "→ Masters Degree"].map(opt => {
+                                  const isRecommended = opt === recPg;
+                                  return (
+                                    <button
+                                      key={opt}
+                                      onClick={() => {
+                                        onSelectOption(node.id, opt);
+                                        setExpandedSelId(null);
+                                      }}
+                                      className="p-4 rounded-xl border text-xs font-bold text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition-all flex flex-col gap-2 group"
+                                    >
+                                      <div className="flex justify-between items-center w-full">
+                                        <span className="text-sm font-extrabold text-slate-800 group-hover:text-cyan-600">{opt.replace("→ ", "")}</span>
+                                        {isRecommended && (
+                                          <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                                            Recommended ⭐
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-[11px] text-slate-500 font-normal">
+                                        {opt === "→ Enter Workforce" ? "Pivot into target industry roles and secure placements." : "Advance scientific, research, or executive specialization."}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Masters Specialization Form */}
+                          {node.id === "node-masters-select" && (
+                            <div className="space-y-4">
+                              <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Select PG Specialization Course</label>
+                              <div className="flex flex-col gap-2.5">
+                                {[
+                                  "M.Tech / MS (Computer Science/IT)",
+                                  "MBA (Management/Finance)",
+                                  "M.Sc (Sciences)",
+                                  "MA (Arts/Humanities/Law)"
+                                ].map(opt => {
+                                  const isRecommended = opt === recPgCourse;
+                                  return (
+                                    <button
+                                      key={opt}
+                                      onClick={() => {
+                                        onSelectOption(node.id, opt);
+                                        setExpandedSelId(null);
+                                      }}
+                                      className="p-3.5 rounded-xl border text-xs font-bold text-left bg-white border-slate-200 hover:border-cyan-400 hover:bg-cyan-50/10 transition flex justify-between items-center"
+                                    >
+                                      <span>{opt}</span>
+                                      {isRecommended && (
+                                        <span className="text-[9px] font-extrabold uppercase tracking-wide bg-amber-100 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full">
+                                          Recommended ⭐
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ── COMPLETED / HISTORIC SELECTIONS ── */}
+                {doneSelNodes.length > 0 && (
+                  <div className="space-y-3 mt-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Locked Selections & Pathways</p>
+                    <div className="grid gap-2.5">
+                      {doneSelNodes.map(node => (
+                        <div key={node.id} className="border border-slate-200/80 rounded-xl p-3.5 bg-slate-50 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-emerald-600 text-xs font-bold">✓</span>
+                            <div>
+                              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">{node.label}: </span>
+                              <span className="text-xs font-bold text-slate-800">{userSelections[node.id]}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Do you want to change your selection for "${node.label}"? This will re-lock downstream milestones.`)) {
+                                onSelectOption(node.id, undefined);
+                              }
+                            }}
+                            className="text-[10px] font-extrabold text-slate-400 hover:text-rose-600 transition uppercase tracking-wider"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </Panel>
 

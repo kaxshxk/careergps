@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   nodeCache: "career-gps:node-content-cache",       // Map<nodeId, nodeContent>
   nodeStates: "career-gps:node-states",             // Map<nodeId, state string>
   completedGoals: "career-gps:completed-goals-list", // string[] of completed goal texts
+  userSelections: "career-gps:user-selections",     // Map<nodeId, optionText>
 };
 
 /**
@@ -176,4 +177,16 @@ export function saveCompletedGoalsList(goalTexts) {
 
 export function loadCompletedGoalsList() {
   return safeParse(localStorage.getItem(STORAGE_KEYS.completedGoals), []) || [];
+}
+
+// ─────────────────────────────────────────────────────────
+// User Selections — choice nodes
+// ─────────────────────────────────────────────────────────
+
+export function saveUserSelections(selections) {
+  localStorage.setItem(STORAGE_KEYS.userSelections, JSON.stringify(selections));
+}
+
+export function loadUserSelections() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.userSelections), {}) || {};
 }
