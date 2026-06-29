@@ -76,6 +76,26 @@ def test_recommend_experience_out_of_range(client):
     assert resp.status_code == 400
     assert b'Experience must be between 0 and 60 years.' in resp.data
 
+def test_recommend_invalid_origin(client):
+    resp = client.post('/recommend', headers={
+        'Origin': 'https://evilhackers.com'
+    }, data={
+        'skills': 'Python',
+        'experience': '3'
+    })
+    assert resp.status_code == 403
+    assert b'Forbidden: Invalid request origin' in resp.data
+
+def test_recommend_valid_origin(client):
+    resp = client.post('/recommend', headers={
+        'Origin': 'http://localhost:5173'
+    }, data={
+        'skills': 'Python',
+        'experience': '3'
+    })
+    assert resp.status_code == 200
+
+
 def test_get_market_trends(client):
     resp = client.get('/get-market-trends')
     assert resp.status_code == 200
