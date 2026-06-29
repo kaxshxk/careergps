@@ -53,8 +53,11 @@ def recommend():
         return jsonify(error="Gemini API key not configured"), 503
         
     model = os.environ.get('GEMINI_MODEL', 'gemini-1.5-flash')
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
+    }
     
     prompt = f"Given the following profile: Skills: {skills}, Experience: {experience} years. Provide a list of recommended career roadmaps, certifications, and next steps."
     payload = {
