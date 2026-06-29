@@ -280,6 +280,12 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
   };
 
   const handleNodeClick = useCallback((node) => {
+    // If it's a selection node, redirect to the dashboard goals section
+    if (node.type === "selection" || node.id.includes("-select")) {
+      onGoToDashboard();
+      return;
+    }
+
     setActiveNode(node);
     setIsLocked(true);
 
@@ -293,9 +299,12 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     if (node.state !== "locked") {
       fetchNodeContent(node.id, node.type, node.label, node.parentId);
     }
-  }, [nodeCache, completedGoals, userSelections, reevaluateStates]);
+  }, [nodeCache, completedGoals, userSelections, reevaluateStates, onGoToDashboard]);
 
   const handleNodeHover = useCallback((node) => {
+    if (node.type === "selection" || node.id.includes("-select")) {
+      return;
+    }
     if (!isLocked) {
       setActiveNode(node);
       // Pre-fetch hover content eagerly for smooth transition
