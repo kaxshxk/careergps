@@ -1391,6 +1391,162 @@ const AGE_CONTENT_RULES = {
   WORKING:       { age: "22+",   rules: "Use: skill gap bridging, industry certifications, leadership skills, portfolio refinement, networking, promotion milestones. NO semester structure — use quarterly blocks." }
 };
 
+function getOfflineMockNodeContent(nodeId, nodeLabel, profile) {
+  const stage = profile?.stage || "UNDERGRADUATE";
+  const fieldType = profile?.field?.type || "TECH";
+  const careerGoal = profile?.goal?.description || "your career goal";
+  
+  // Default values
+  let goals = [
+    `Master the key concepts and tools relevant to ${nodeLabel}`,
+    `Build a practical mini-project demonstrating skills from this stage`,
+    `Document your progress and reflect on learning from this period`
+  ];
+  let skills = ["Critical thinking", "Domain knowledge", "Time management"];
+  let summary = `This stage focuses on ${nodeLabel}, building the foundation you need to reach your goal of becoming a ${careerGoal}.`;
+  
+  const lowId = nodeId.toLowerCase();
+  
+  if (lowId.includes("root")) {
+    goals = [
+      `Define your career aspirations and identify target fields (e.g. Software, Finance, Design)`,
+      `Conduct informational interviews or research professionals working in your target role`,
+      `Assess your current skill strengths and map out learning gaps`
+    ];
+    skills = ["Career planning", "Market research", "Self-assessment"];
+    summary = "Welcome to your roadmap! This initial step is about self-discovery, target setting, and mapping your current capabilities.";
+  } else if (lowId.includes("grade-9")) {
+    goals = [
+      `Build solid mathematical foundations (Algebra, Statistics) essential for analytical fields`,
+      `Explore introductory coding resources (e.g. Scratch, Python) or basic logic puzzle solving`,
+      `Maintain a consistent study schedule and master active recall study techniques`
+    ];
+    skills = ["Algorithmic logic", "Basic arithmetic", "Active learning"];
+    summary = "Grade 9 is the perfect time to build strong study habits and explore fundamental scientific and mathematical principles.";
+  } else if (lowId.includes("grade-10")) {
+    goals = [
+      `Excel in 10th Grade board examinations to keep high-school option pathways open`,
+      `Examine boards (CBSE, State, Diploma) and stream branch specializations (Science, Commerce, Arts)`,
+      `Develop public speaking and collaboration skills through school presentations and group work`
+    ];
+    skills = ["Exam preparation", "Academic planning", "Public speaking"];
+    summary = "Grade 10 is a major milestone year focused on boards and stream selection. Excel in exams and plan your next academic stage.";
+  } else if (lowId.includes("grade-11")) {
+    goals = [
+      `Deep dive into selected stream subjects (e.g. Physics, Chemistry, Math or Accounts/Economics)`,
+      `Learn core computing concepts (basic variables, loops) or business fundamentals depending on stream`,
+      `Research top universities and admission criteria for target undergraduate degrees`
+    ];
+    skills = ["Advanced sciences", "Logical thinking", "University research"];
+    summary = "Grade 11 marks the start of your specialization stream. Lay down deep academic roots in your chosen subjects.";
+  } else if (lowId.includes("grade-12")) {
+    goals = [
+      `Achieve competitive scores in 12th Grade boards and college entrance examinations`,
+      `Prepare college applications, personal statements, and draft a high-school resume`,
+      `Learn personal finance basics (budgeting, saving) before transitioning to college`
+    ];
+    skills = ["Time management under pressure", "College writing", "Financial literacy"];
+    summary = "Grade 12 is the final board exam year. Focus heavily on entrance tests, boards, and securing college admissions.";
+  } else if (lowId.includes("sem-1") || lowId.includes("sem-2") || lowId.includes("semester-1") || lowId.includes("semester-2")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Maintain a strong first-year GPA (GPA > 8.0/10) to secure future elective options`,
+        `Master programming fundamentals (basic Python, C++, or Java syntax) and OOP principles`,
+        `Join campus technical clubs and coding societies to meet peers and build networks`
+      ];
+      skills = ["Object-Oriented Programming", "Algorithm basics", "Networking"];
+    } else {
+      goals = [
+        `Maintain a strong first-year GPA (GPA > 8.0/10) to build a solid academic record`,
+        `Master core principles of microeconomics, financial accounting, and business laws`,
+        `Join campus business, commerce, or debating clubs to develop leadership skills`
+      ];
+      skills = ["Accounting principles", "Economic analysis", "Group discussion"];
+    }
+    summary = "Your first year of college is about adjusting to university life, maintaining a strong GPA, and learning core fundamentals.";
+  } else if (lowId.includes("sem-3") || lowId.includes("sem-4") || lowId.includes("semester-3") || lowId.includes("semester-4")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Master Data Structures & Algorithms (Arrays, Linked Lists, Trees, Stacks, Queues)`,
+        `Build 2-3 mini-projects using your core programming language and host them on GitHub`,
+        `Learn relational database concepts and write SQL queries for data management`
+      ];
+      skills = ["Data Structures & Algorithms", "SQL Databases", "Git & GitHub"];
+    } else {
+      goals = [
+        `Master financial accounting, corporate governance, and cost analysis principles`,
+        `Build spreadsheet models (Excel/Google Sheets) for basic corporate budgets`,
+        `Participate in national-level case study competitions and business simulations`
+      ];
+      skills = ["Advanced Excel", "Financial modeling", "Case analysis"];
+    }
+    summary = "Second year is critical for domain depth. Build projects, master core technical subjects, and start using source control.";
+  } else if (lowId.includes("sem-5") || lowId.includes("sem-6") || lowId.includes("semester-5") || lowId.includes("semester-6")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Learn advanced framework development (e.g. React/Node.js or Python backend frameworks)`,
+        `Apply for summer software developer or technical internships via Internshala and LinkedIn`,
+        `Solve 100+ coding problems on platforms like LeetCode or HackerRank to prepare for placements`
+      ];
+      skills = ["Web Development", "LeetCode practice", "Internship prep"];
+    } else {
+      goals = [
+        `Master financial management, income tax laws, and business analytics methods`,
+        `Secure a summer internship in marketing, corporate finance, or business operations`,
+        `Prepare case studies and brush up on group discussions and business writing`
+      ];
+      skills = ["Corporate Finance", "Business writing", "Interview skills"];
+    }
+    summary = "Third year focuses on internships and upskilling. Build real projects, practice interview questions, and secure summer roles.";
+  } else if (lowId.includes("sem-7") || lowId.includes("sem-8") || lowId.includes("semester-7") || lowId.includes("semester-8")) {
+    if (fieldType === "TECH" || fieldType === "SCIENCE") {
+      goals = [
+        `Complete a high-impact final year Capstone project demonstrating end-to-end implementation`,
+        `Prepare for technical interviews (System Design, OS, DBMS) and solve mock challenges`,
+        `Participate in campus placement drives and apply to target software graduate programs`
+      ];
+      skills = ["System Design", "Final capstone project", "Technical interviewing"];
+    } else {
+      goals = [
+        `Complete a comprehensive final year dissertation or industry consulting capstone project`,
+        `Prepare for quantitative aptitude, logical reasoning tests, and behavioral interviews`,
+        `Secure a graduate associate position or apply to target postgraduate MBA programs`
+      ];
+      skills = ["Aptitude testing", "Behavioral interviewing", "Strategic analysis"];
+    }
+    summary = "Your final year is all about placements and graduation. Complete your capstone project and secure your transition to career or masters.";
+  } else if (lowId.includes("pg")) {
+    goals = [
+      `Master advanced specialization coursework (AI/ML algorithms, Advanced Corporate Strategy, or clinical diagnostics)`,
+      `Conduct thesis or specialized research and aim to publish at least one peer-reviewed conference paper`,
+      `Prepare for post-graduate final placements and apply to senior leadership associate roles`
+    ];
+    skills = ["Research methodology", "Specialized domain tools", "Leadership prep"];
+    summary = "Your Master's degree is about advanced mastery. Publish research, complete specialized internships, and transition into senior industry roles.";
+  }
+  
+  // Build goal_reasons
+  const goal_reasons = {};
+  goals.forEach(g => {
+    goal_reasons[g] = `Achieving this goal helps you build the necessary foundation to become a successful ${careerGoal}.`;
+  });
+  
+  return {
+    goals,
+    skills,
+    milestones: [{
+      id: `${nodeId}-ms-1`,
+      title: `Complete ${nodeLabel} objectives`,
+      detail: `Lay down solid foundations in ${nodeLabel} to progress toward ${careerGoal}.`,
+      timeframe: nodeLabel
+    }],
+    summary,
+    goal_reasons,
+    stageGoals: goals.slice(0, 2),
+    isMock: true
+  };
+}
+
 app.post("/api/node-content", async (req, res) => {
   const { profile, nodeType, nodeId, nodeLabel, parentNodeLabel, completedMilestones, userSelections, allCompletedGoals } = req.body;
 
@@ -1504,31 +1660,9 @@ Rules:
 
   } catch (error) {
     console.error("[Backend Error] node-content failed:", error.message);
-    // Offline fallback
-    const careerGoal = profile?.goal?.description || "your career goal";
     const nodeLabel_ = nodeLabel || nodeId;
-    res.json({
-      goals: [
-        `Master the key concepts and tools relevant to ${nodeLabel_}`,
-        `Build a practical mini-project demonstrating skills from this stage`,
-        `Document your progress and reflect on learning from this period`
-      ],
-      skills: ["Critical thinking", "Research skills", "Time management"],
-      milestones: [{
-        id: `${nodeId}-ms-1`,
-        title: `Complete ${nodeLabel_} objectives`,
-        detail: `Work through the core requirements of this stage to progress toward ${careerGoal}.`,
-        timeframe: nodeLabel_
-      }],
-      summary: `This stage focuses on ${nodeLabel_}, building the foundation you need to reach your goal of becoming a ${careerGoal}.`,
-      goal_reasons: {
-        [`Master the key concepts and tools relevant to ${nodeLabel_}`]: `Understanding core concepts at this stage is essential groundwork for a career as a ${careerGoal}.`,
-        [`Build a practical mini-project demonstrating skills from this stage`]: `Project experience at this stage directly demonstrates capability to future employers in ${careerGoal} roles.`,
-        [`Document your progress and reflect on learning from this period`]: `Reflective documentation builds the portfolio evidence that ${careerGoal} hiring managers look for.`
-      },
-      stageGoals: [`Complete ${nodeLabel_} coursework`, `Practice key skills daily`, `Prepare for the next stage`],
-      isMock: true
-    });
+    const mockContent = getOfflineMockNodeContent(nodeId, nodeLabel_, profile);
+    res.json(mockContent);
   }
 });
 
