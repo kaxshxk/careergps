@@ -23,6 +23,8 @@ export const SCAFFOLD_COLORS = {
   alternate:   "#f4a38f", // salmon — alternate paths
   skill:       "#c084fc", // purple — skills to build
   quarterly:   "#0891b2", // cyan — quarterly blocks (Working Professional)
+  "choice-option": "#0891b2", // cyan choice option
+  "choice-option-selected": "#10b981", // green selected choice option
 };
 
 // ─────────────────────────────────────────────────────────
@@ -52,6 +54,12 @@ function snode(id, label, type, opts = {}) {
     contentLoaded: false,
     contentLoading: false,
     children: [],
+    timeframe: opts.timeframe || null,
+    // Custom option fields
+    selectionValue: opts.selectionValue || null,
+    selectionParentId: opts.selectionParentId || null,
+    selectionTier: opts.selectionTier || null,
+    selectionProgression: opts.selectionProgression || null,
   };
 }
 
@@ -101,7 +109,7 @@ function buildCareerProgressionChain(profile, parentId, startDepth, idPrefix = "
 // ─────────────────────────────────────────────────────────
 // Post-graduation selection: Junior Role vs Masters
 // ─────────────────────────────────────────────────────────
-function buildPostGradSelection(profile, parentId, depth) {
+function buildPostGradSelection(profile, parentId, depth, selections) {
   const selNode = snode("node-postgrad-select", "What's next?", "selection", {
     state: "locked", depth, parentId,
     isSelectionPoint: true,
@@ -132,16 +140,52 @@ function buildPostGradSelection(profile, parentId, depth) {
   pgCheckpoint.children = [pgCareer];
   pgY2.children = [pgCheckpoint];
   pgY1.children = [pgY2];
-  mastersBranch.children = [pgY1];
+  
+  attachSelectionChildren(mastersBranch, [pgY1], profile, selections);
 
-  selNode.children = [juniorBranch, mastersBranch];
+  const postgradChoice = (selections || {})["node-postgrad-select"];
+  if (postgradChoice === "→ Enter Workforce") {
+    const choiceNode = snode("node-postgrad-select-choice", "→ Enter Workforce", "choice-option-selected", {
+      state: "completed", depth: depth + 0.5, parentId: selNode.id, color: "#10b981",
+    });
+    choiceNode.selectionValue = "→ Enter Workforce";
+    choiceNode.selectionParentId = selNode.id;
+    choiceNode.children = [juniorBranch];
+    juniorBranch.parentId = choiceNode.id;
+    selNode.children = [choiceNode];
+  } else if (postgradChoice === "→ Masters Degree") {
+    const choiceNode = snode("node-postgrad-select-choice", "→ Masters Degree", "choice-option-selected", {
+      state: "completed", depth: depth + 0.5, parentId: selNode.id, color: "#10b981",
+    });
+    choiceNode.selectionValue = "→ Masters Degree";
+    choiceNode.selectionParentId = selNode.id;
+    choiceNode.children = [mastersBranch];
+    mastersBranch.parentId = choiceNode.id;
+    selNode.children = [choiceNode];
+  } else {
+    const optWorkforce = snode("node-postgrad-select-opt-workforce", "→ Enter Workforce", "choice-option", {
+      state: "unlocked", depth: depth + 0.5, parentId: selNode.id, color: "#0891b2",
+    });
+    optWorkforce.selectionValue = "→ Enter Workforce";
+    optWorkforce.selectionParentId = selNode.id;
+    optWorkforce.selectionProgression = "SENIOR"; // Default workforce track option
+
+    const optMasters = snode("node-postgrad-select-opt-masters", "→ Masters Degree", "choice-option", {
+      state: "unlocked", depth: depth + 0.5, parentId: selNode.id, color: "#0891b2",
+    });
+    optMasters.selectionValue = "→ Masters Degree";
+    optMasters.selectionParentId = selNode.id;
+
+    selNode.children = [optWorkforce, optMasters];
+  }
+
   return selNode;
 }
 
 // ─────────────────────────────────────────────────────────
 // UG Semesters (1–8 or subset based on starting point)
 // ─────────────────────────────────────────────────────────
-function buildUGSemesters(profile, parentId, startSem, totalSems, startDepth) {
+function buildUGSemesters(profile, parentId, startSem, totalSems, startDepth, selections) {
   const SEM_LABELS = {
     1: "Sem 1: Campus & Academic Adaptation",
     2: "Sem 2: Foundations & First Skills",
@@ -201,7 +245,7 @@ function buildUGSemesters(profile, parentId, startSem, totalSems, startDepth) {
   // Attach post-grad selection after last semester
   const lastSem = semNodes[semNodes.length - 1];
   const lastDepth = startDepth + semNodes.length;
-  const postGradNode = buildPostGradSelection(profile, lastSem.id, lastDepth);
+  const postGradNode = buildPostGradSelection(profile, lastSem.id, lastDepth, selections);
   const lastCpChild = lastSem.children.find(c => c.isCheckpoint);
   if (lastCpChild) {
     lastCpChild.children.push(postGradNode);
@@ -262,7 +306,7 @@ function buildWorkingPath(profile, parentId, startDepth) {
 // ─────────────────────────────────────────────────────────
 // School path: Board selection → Stream → 11th → 12th → UG select
 // ─────────────────────────────────────────────────────────
-function buildSchoolToCollegePath(profile, parentId, startDepth, startGrade) {
+function buildSchoolToCollegePath(profile, parentId, startDepth, startGrade, selections) {
   const gradeNodes = [];
 
   // Add grade nodes from startGrade to 12
@@ -270,7 +314,7 @@ function buildSchoolToCollegePath(profile, parentId, startDepth, startGrade) {
     const isStart = g === startGrade;
     const gradeNode = snode(
       `node-grade-${g}`,
-      g <= 10 ? `Grade ${g}` : `Grade ${g} (${g === 11 ? "Stream Start" : "Final Boards"})`,
+      g <= 10 ? `Grade ${g}` : `Grade ${g} (${g === 11 ? "Stream Stream" : "Final Boards"})`,
       "stage",
       {
         state: isStart ? "unlocked" : "locked",
@@ -305,8 +349,8 @@ function buildSchoolToCollegePath(profile, parentId, startDepth, startGrade) {
         parentId: cp12.id, isSelectionPoint: true, color: SCAFFOLD_COLORS.selection,
       });
       // UG semesters start after degree selection
-      const ugSems = buildUGSemesters(profile, ugSel.id, 1, 8, startDepth + (g - startGrade) + 2);
-      ugSel.children = [ugSems];
+      const ugSems = buildUGSemesters(profile, ugSel.id, 1, 8, startDepth + (g - startGrade) + 2, selections);
+      attachSelectionChildren(ugSel, [ugSems], profile, selections);
       cp12.children = [ugSel];
       gradeNode.children = [cp12];
     }
@@ -323,7 +367,7 @@ function buildSchoolToCollegePath(profile, parentId, startDepth, startGrade) {
       // Chain through the board selection
       const cp10 = gradeNodes[i].children[0];
       const boardSel = cp10.children[0];
-      boardSel.children = [gradeNodes[i + 1]];
+      attachSelectionChildren(boardSel, [gradeNodes[i + 1]], profile, selections);
     }
   }
 
@@ -344,8 +388,16 @@ function buildSchoolToCollegePath(profile, parentId, startDepth, startGrade) {
  *   - "in_progress" = goals partially checked
  *   - "completed"   = all goals checked
  */
-export function buildMindmapScaffold(profile, nodeStates = {}) {
+export function buildMindmapScaffold(profile, nodeStates = {}, userSelections = {}) {
   resetIdCounter();
+
+  let selections = userSelections;
+  if (!selections || Object.keys(selections).length === 0) {
+    try {
+      const raw = localStorage.getItem("career-gps:user-selections");
+      selections = raw ? JSON.parse(raw) : {};
+    } catch (e) { selections = {}; }
+  }
 
   const stage = profile?.stage || "UNDERGRADUATE";
   const goalLabel = profile?.goal?.description || "Career Goal";
@@ -367,7 +419,7 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
       const grade78 = snode("node-grade-7-8", "Grade 7 / 8 (NOW)", "stage", {
         state: "unlocked", depth: 1, parentId: root.id, isCurrentStage: true,
       });
-      const schoolPath = buildSchoolToCollegePath(profile, grade78.id, 2, 9);
+      const schoolPath = buildSchoolToCollegePath(profile, grade78.id, 2, 9, selections);
       grade78.children = [schoolPath];
       firstChild = grade78;
       break;
@@ -377,7 +429,7 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
       const grade9 = snode("node-grade-9", "Grade 9 (NOW)", "stage", {
         state: "unlocked", depth: 1, parentId: root.id, isCurrentStage: true,
       });
-      const schoolPath = buildSchoolToCollegePath(profile, grade9.id, 2, 10);
+      const schoolPath = buildSchoolToCollegePath(profile, grade9.id, 2, 10, selections);
       grade9.children = [schoolPath];
       firstChild = grade9;
       break;
@@ -399,8 +451,8 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
         state: "locked", depth: 3, parentId: cp12.id,
         isSelectionPoint: true, color: SCAFFOLD_COLORS.selection,
       });
-      const ugSems = buildUGSemesters(profile, ugSel.id, 1, 8, 4);
-      ugSel.children = [ugSems];
+      const ugSems = buildUGSemesters(profile, ugSel.id, 1, 8, 4, selections);
+      attachSelectionChildren(ugSel, [ugSems], profile, selections);
       cp12.children = [ugSel];
       grade12.children = [cp12];
       grade11.children = [grade12];
@@ -414,7 +466,7 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
       const ugNode = snode(`node-sem-${startSem}`, `Semester ${startSem} (NOW)`, "semester", {
         state: "unlocked", depth: 1, parentId: root.id, isCurrentStage: true,
       });
-      const remainingSems = buildUGSemesters(profile, root.id, startSem, 8 - startSem + 1, 1);
+      const remainingSems = buildUGSemesters(profile, root.id, startSem, 8 - startSem + 1, 1, selections);
       firstChild = remainingSems;
       break;
     }
@@ -445,7 +497,7 @@ export function buildMindmapScaffold(profile, nodeStates = {}) {
 
     default: {
       // Fallback: UG path
-      firstChild = buildUGSemesters(profile, root.id, 1, 8, 1);
+      firstChild = buildUGSemesters(profile, root.id, 1, 8, 1, selections);
       break;
     }
   }
@@ -479,9 +531,12 @@ function applyNodeStates(node, stateMap = {}) {
 export function flattenScaffold(root) {
   const result = [];
   function walk(node) {
+    if (!node) return;
     result.push(node);
-    for (const child of node.children) {
-      walk(child);
+    if (node.children) {
+      for (const child of node.children) {
+        walk(child);
+      }
     }
   }
   walk(root);
@@ -492,10 +547,13 @@ export function flattenScaffold(root) {
  * Finds a node by ID in the scaffold tree
  */
 export function findNodeById(root, targetId) {
+  if (!root) return null;
   if (root.id === targetId) return root;
-  for (const child of root.children) {
-    const found = findNodeById(child, targetId);
-    if (found) return found;
+  if (root.children) {
+    for (const child of root.children) {
+      const found = findNodeById(child, targetId);
+      if (found) return found;
+    }
   }
   return null;
 }
@@ -513,6 +571,7 @@ export function calculateProgress(root, nodeCache = {}, nodeStates = {}, complet
   const currentStates = nodeStates || {};
 
   function walk(node) {
+    if (!node) return;
     const state = currentStates[node.id] || node.state;
     // Only count unlocked, in_progress, or completed nodes
     if (state === "locked") return;
@@ -528,8 +587,10 @@ export function calculateProgress(root, nodeCache = {}, nodeStates = {}, complet
       }
     }
 
-    for (const child of node.children) {
-      walk(child);
+    if (node.children) {
+      for (const child of node.children) {
+        walk(child);
+      }
     }
   }
 
@@ -540,4 +601,167 @@ export function calculateProgress(root, nodeCache = {}, nodeStates = {}, complet
     completedCount: completedGoals,
     totalCount: totalGoals,
   };
+}
+
+export function getSelectionOptions(nodeId, profile) {
+  const fieldType = profile?.field?.type || "TECH";
+  
+  if (nodeId === "node-board-select") {
+    if (fieldType === "TECH") {
+      return [
+        { value: "CBSE - Science (MPC)", label: "CBSE - Science (MPC)", desc: "CBSE board with Maths, Physics, Chemistry." },
+        { value: "State Board (Inter) - MEC", label: "State Board - MEC", desc: "State Board with Maths, Economics, Commerce." },
+        { value: "CBSE - Science (MPC + CS)", label: "CBSE - Science (MPC + CS)", desc: "CBSE board with MPC and Computer Science." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+      ];
+    } else if (fieldType === "MEDICINE") {
+      return [
+        { value: "CBSE - Science (BiPC)", label: "CBSE - Science (BiPC)", desc: "CBSE board with Biology, Physics, Chemistry." },
+        { value: "State Board (Inter) - Science (PCMB)", label: "State Board - Science (PCMB)", desc: "State Board with PCMB." },
+        { value: "CBSE - Science (PCB + Biotech)", label: "CBSE - Science (PCB + Biotech)", desc: "CBSE board with Biology and Biotechnology." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+      ];
+    } else if (fieldType === "COMMERCE") {
+      return [
+        { value: "CBSE - MEC", label: "CBSE - MEC", desc: "CBSE board with Maths, Economics, Commerce." },
+        { value: "State Board (Inter) - CEC", label: "State Board - CEC", desc: "State Board with Civics, Economics, Commerce." },
+        { value: "CBSE - Commerce (with CS/IP)", label: "CBSE - Commerce (with CS/IP)", desc: "CBSE board with Commerce and Computer Science/IP." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+      ];
+    } else if (fieldType === "LAW") {
+      return [
+        { value: "CBSE - Arts/Humanities (HEC)", label: "CBSE - Arts/Humanities (HEC)", desc: "CBSE board with History, Economics, Civics." },
+        { value: "State Board (Inter) - MEC", label: "State Board - MEC", desc: "State Board with MEC." },
+        { value: "CBSE - Science (PCM)", label: "CBSE - Science (PCM)", desc: "CBSE board with Physics, Chemistry, Maths." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+      ];
+    } else {
+      return [
+        { value: "CBSE - Science (PCM)", label: "CBSE - Science (PCM)", desc: "CBSE board with PCM." },
+        { value: "State Board (Inter) - Commerce (with Math)", label: "State Board - Commerce (with Math)", desc: "State Board with Commerce & Math." },
+        { value: "CBSE - Arts/Humanities (with Math)", label: "CBSE - Arts/Humanities (with Math)", desc: "CBSE board with Arts/Humanities and Math." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+      ];
+    }
+  }
+
+  if (nodeId === "node-ug-select") {
+    if (fieldType === "TECH") {
+      return [
+        { value: "Tier 1 - B.Tech / B.E. (Computer Science/IT)", label: "Tier 1: B.Tech (CSE/IT)", desc: "Top tier engineering college." },
+        { value: "Tier 2 - BCA / B.Sc (Computer Science)", label: "Tier 2: BCA / B.Sc (CS)", desc: "Reputable applied computing track." },
+        { value: "Tier 3 - B.Tech / B.E. (Electronics / Allied)", label: "Tier 3: B.Tech (ECE/Allied)", desc: "Local college hardware-software track." }
+      ];
+    } else if (fieldType === "MEDICINE") {
+      return [
+        { value: "Tier 1 - MBBS / BDS (Medicine)", label: "Tier 1: MBBS / BDS", desc: "Top tier medical college." },
+        { value: "Tier 2 - B.Sc (Sciences/Biotech)", label: "Tier 2: B.Sc (Biotech)", desc: "Reputable biotech/science track." },
+        { value: "Tier 3 - B.Tech (Bioinformatics / Biomedical)", label: "Tier 3: B.Tech (Bio-tech/Biomed)", desc: "Local college biomedical track." }
+      ];
+    } else if (fieldType === "COMMERCE") {
+      return [
+        { value: "Tier 1 - B.Com / BBA (Business/Finance)", label: "Tier 1: B.Com / BBA", desc: "Top business school." },
+        { value: "Tier 2 - B.Com (Honors / Corporate Finance)", label: "Tier 2: B.Com (Honors)", desc: "Reputable commerce track." },
+        { value: "Tier 3 - B.Sc (Economics / Statistics)", label: "Tier 3: B.Sc (Econ/Stats)", desc: "Local college economics track." }
+      ];
+    } else if (fieldType === "LAW") {
+      return [
+        { value: "Tier 1 - BA LLB (Integrated Law)", label: "Tier 1: BA LLB", desc: "Top national law university." },
+        { value: "Tier 2 - BBA LLB (Business Law)", label: "Tier 2: BBA LLB", desc: "Reputable business law track." },
+        { value: "Tier 3 - B.Com LLB (Finance Law)", label: "Tier 3: B.Com LLB", desc: "Local finance law track." }
+      ];
+    } else {
+      return [
+        { value: "Tier 1 - B.Des (Design / UX/UI)", label: "Tier 1: B.Des (UX/UI)", desc: "Top design institute." },
+        { value: "Tier 2 - BA (Fine Arts / Content Strategy)", label: "Tier 2: BA (Fine Arts)", desc: "Reputable creative track." },
+        { value: "Tier 3 - B.Sc (Multimedia / Game Design)", label: "Tier 3: B.Sc (Game Design)", desc: "Local multimedia track." }
+      ];
+    }
+  }
+
+  if (nodeId === "node-masters-select") {
+    if (fieldType === "TECH") {
+      return [
+        { value: "M.Tech / MS (Computer Science/IT)", label: "M.Tech / MS (CSE/IT)", desc: "Advanced software engineering, algorithms, AI/ML specialization.", selectionTier: "Tier 1" },
+        { value: "MCA (Computer Applications)", label: "MCA (Computer Applications)", desc: "Advanced application design, database administration, and web systems.", selectionTier: "Tier 2" },
+        { value: "MBA (Technology Management)", label: "MBA (Technology Management)", desc: "Leadership in technology, product management, and systems engineering.", selectionTier: "Tier 1" }
+      ];
+    } else if (fieldType === "MEDICINE") {
+      return [
+        { value: "MD / MS (Clinical Specialization)", label: "MD / MS (Clinical Specialty)", desc: "Advanced clinical practice, surgical methods, hospital residency.", selectionTier: "Tier 1" },
+        { value: "M.Sc (Sciences)", label: "M.Sc (Sciences)", desc: "Advanced scientific research, biotechnology lab specialties.", selectionTier: "Tier 2" },
+        { value: "M.Pharma / MBA (Healthcare)", label: "M.Pharma / MBA (Healthcare)", desc: "Pharmaceutical administration, clinical trials management, healthcare admin.", selectionTier: "Tier 1" }
+      ];
+    } else if (fieldType === "COMMERCE") {
+      return [
+        { value: "MBA (Management/Finance)", label: "MBA (Management/Finance)", desc: "Corporate strategy, financial modeling, organizational leadership.", selectionTier: "Tier 1" },
+        { value: "M.Com (Advanced Accounting)", label: "M.Com (Advanced Accounting)", desc: "Corporate taxation, auditing theory, and corporate regulations.", selectionTier: "Tier 2" },
+        { value: "M.Sc (Financial Engineering)", label: "M.Sc (Financial Engineering)", desc: "Quantitative finance, risk management, and algorithmic trading.", selectionTier: "Tier 1" }
+      ];
+    } else if (fieldType === "LAW") {
+      return [
+        { value: "LLM (Corporate & IP Law)", label: "LLM (Corporate & IP Law)", desc: "Intellectual property law, legal litigation, media, creative communications.", selectionTier: "Tier 1" },
+        { value: "LLM (International Law & Policy)", label: "LLM (International Law & Policy)", desc: "Global regulations, treaty laws, and comparative constitutional law.", selectionTier: "Tier 2" },
+        { value: "MBA (Legal Studies / Compliance)", label: "MBA (Legal Studies / Compliance)", desc: "Corporate compliance, business ethics, and governance.", selectionTier: "Tier 1" }
+      ];
+    } else {
+      return [
+        { value: "M.Des (Interaction / UX Design)", label: "M.Des (UX Design)", desc: "User experience research, system architecture, human-computer interaction.", selectionTier: "Tier 1" },
+        { value: "MA (Creative Communications)", label: "MA (Creative Communications)", desc: "Content strategy, digital marketing, public relations.", selectionTier: "Tier 2" },
+        { value: "M.Sc (Information Design / Data Viz)", label: "M.Sc (Info Design / Data Viz)", desc: "Visualizing complex data, dashboard design, info graphics.", selectionTier: "Tier 1" }
+      ];
+    }
+  }
+
+  if (nodeId === "node-postgrad-select") {
+    return [
+      { value: "→ Enter Workforce", label: "→ Enter Workforce", desc: "Secure junior placement.", selectionProgression: "SENIOR" },
+      { value: "→ Masters Degree", label: "→ Masters Degree", desc: "Pursue higher specialization." }
+    ];
+  }
+
+  return [];
+}
+
+export function attachSelectionChildren(selNode, nextChildren, profile, selections) {
+  const selection = (selections || {})[selNode.id];
+  
+  if (selection) {
+    const choiceNode = snode(`${selNode.id}-choice`, selection, "choice-option-selected", {
+      state: "completed",
+      depth: selNode.depth + 0.5,
+      parentId: selNode.id,
+      color: "#10b981", // green for selected
+      timeframe: "Selected ✓",
+    });
+    
+    choiceNode.selectionValue = selection;
+    choiceNode.selectionParentId = selNode.id;
+    
+    choiceNode.children = nextChildren;
+    for (const child of nextChildren) {
+      child.parentId = choiceNode.id;
+      child.depth = choiceNode.depth + 0.5;
+    }
+    
+    selNode.children = [choiceNode];
+  } else {
+    const options = getSelectionOptions(selNode.id, profile);
+    const optionNodes = options.map((opt, index) => {
+      const optNode = snode(`${selNode.id}-opt-${index}`, opt.label, "choice-option", {
+        state: "unlocked",
+        depth: selNode.depth + 0.5,
+        parentId: selNode.id,
+        color: "#0891b2", // cyan choice
+        timeframe: "Click to Choose",
+      });
+      optNode.selectionValue = opt.value;
+      optNode.selectionParentId = selNode.id;
+      optNode.selectionTier = opt.selectionTier || null;
+      optNode.selectionProgression = opt.selectionProgression || null;
+      return optNode;
+    });
+    
+    selNode.children = optionNodes;
+  }
 }

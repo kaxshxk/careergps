@@ -78,10 +78,7 @@ export default function CareerMindmap({
 
   const [dimensions, setDimensions] = useState({ w: 800, h: 500 });
 
-  // Persist expandedNodeIds to sessionStorage
-  useEffect(() => {
-    saveMindmapExpandedNodes(expandedNodeIds);
-  }, [expandedNodeIds]);
+
 
   // Track container size
   useEffect(() => {
@@ -93,7 +90,7 @@ export default function CareerMindmap({
       }
     });
     obs.observe(el);
-    setDimensions({ w: el.clientWidth, h: el.clientHeight });
+    setDimensions({ w: el.clientWidth || 800, h: el.clientHeight || 600 });
     return () => obs.disconnect();
   }, []);
 
@@ -101,6 +98,13 @@ export default function CareerMindmap({
   const buildHierarchy = useCallback(() => {
     if (!treeData) return null;
     return d3.hierarchy(treeData, d => {
+      if (!d || !d.id) return null;
+      const isSelectionWithChoice = (d.type === "selection" || d.id.includes("-select")) &&
+        d.children?.length === 1 && d.children[0] && d.children[0].type === "choice-option-selected";
+        
+      if (d.type === "choice-option-selected" || isSelectionWithChoice) {
+        return d.children?.length ? d.children : null;
+      }
       if (!expandedNodeIds.has(d.id)) {
         return null;
       }
@@ -474,7 +478,7 @@ export default function CareerMindmap({
       .attr("fill", getTextColor)
       .text(d => {
         const lbl = d.data.label;
-        const maxChars = d.data.type === "root" ? 24 : 18;
+        const maxChars = ["root", "choice-option", "choice-option-selected", "selection"].includes(d.data.type) ? 28 : 18;
         return lbl.length > maxChars ? lbl.slice(0, maxChars - 1) + "…" : lbl;
       })
       .style("pointer-events", "none");
