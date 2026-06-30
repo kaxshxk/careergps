@@ -1096,7 +1096,7 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
   const [selMastersTier, setSelMastersTier] = useState("");
   const [selMastersCourse, setSelMastersCourse] = useState("");
   const [expandedSelId, setExpandedSelId] = useState(null);
-  const [collapsedNodeIds, setCollapsedNodeIds] = useState(() => new Set());
+  const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set());
   const [wizardStep, setWizardStep] = useState(1);
   const [wizardOpenNodeId, setWizardOpenNodeId] = useState(null);
   const [manuallyClosedId, setManuallyClosedId] = useState(null);
@@ -1116,7 +1116,7 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
   }, [wizardOpenNodeId]);
 
   const toggleNodeCollapsed = (nodeId) => {
-    setCollapsedNodeIds(prev => {
+    setExpandedNodeIds(prev => {
       const next = new Set(prev);
       if (next.has(nodeId)) {
         next.delete(nodeId);
@@ -1187,7 +1187,8 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
     return goalsList.every(g => completedGoals.has(g));
   });
 
-  // Auto-open choice wizard modal when selection nodes unlock and preceding goals are complete
+  // Close choice wizard modal if selection nodes are no longer active or preceding goals are not complete.
+  // Do not auto-open the wizard modal directly; instead, the user must click the banner box to open it.
   useEffect(() => {
     const activeSelNode = flatNodes.find(n => {
       if (!n.isSelectionPoint) return false;
@@ -1195,16 +1196,10 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
       return state === "unlocked" || state === "in_progress";
     });
     
-    if (activeSelNode && allPrecedingGoalsCompleted && !(userSelections || {})[activeSelNode.id] && manuallyClosedId !== activeSelNode.id) {
-      // Only set wizard state and reset step if it's not already open for this node
-      if (wizardOpenNodeId !== activeSelNode.id) {
-        setWizardOpenNodeId(activeSelNode.id);
-        setWizardStep(1);
-      }
-    } else if (!activeSelNode || !allPrecedingGoalsCompleted) {
+    if (!activeSelNode || !allPrecedingGoalsCompleted) {
       setWizardOpenNodeId(null);
     }
-  }, [nodeStates, allPrecedingGoalsCompleted, userSelections, manuallyClosedId, flatNodes, wizardOpenNodeId]);
+  }, [nodeStates, allPrecedingGoalsCompleted, flatNodes]);
 
   const handleMouseEnter = (e, text) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1221,6 +1216,57 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
 
   return (
     <div className="grid gap-6 animate-fade-in relative">
+      {/* Onboarding / Next Step Required Banner (RENDERED AT THE TOP) */}
+      {allPrecedingGoalsCompleted && activeSelNodes.length > 0 && (
+        <Panel className="border-l-4 border-l-cyan-500 bg-gradient-to-r from-cyan-50/20 to-sky-50/10">
+          <SectionHeader
+            kicker="Onboarding Choice"
+            title="Next Step Required"
+            description="Please choose an option to customize and unlock the next phase of your career roadmap."
+          />
+          <div className="mt-4 space-y-4">
+            {activeSelNodes.map(node => {
+              const isOpen = wizardOpenNodeId === node.id;
+              if (isOpen) return null; // If open as a modal, don't show the banner
+              
+              return (
+                <div 
+                  key={node.id} 
+                  className="border border-cyan-200 bg-white/70 p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in"
+                >
+                  <div className="flex gap-3">
+                    <span className="text-2xl mt-0.5">🧭</span>
+                    <div>
+                      <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
+                      <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
+                        {node.id === "node-board-select" && "Choose your Educational Board & high-school Stream to unlock the next phase milestones."}
+                        {node.id === "node-ug-select" && "Choose your College Tier & UG Course specialization to unlock college semester goals."}
+                        {node.id === "node-postgrad-select" && "Select your post-graduation pathway (Job Placement vs Master's specialization)."}
+                        {node.id === "node-masters-select" && "Choose your Master's course specialization to unlock the PG path goals."}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      setWizardOpenNodeId(node.id);
+                      setWizardStep(1);
+                      setManuallyClosedId(null);
+                    }}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all shrink-0 w-full sm:w-auto text-center"
+                  >
+                    {node.id === "node-board-select" && "Choose Board & Stream"}
+                    {node.id === "node-ug-select" && "Choose Degree & College"}
+                    {node.id === "node-postgrad-select" && "Choose Post-Grad Pathway"}
+                    {node.id === "node-masters-select" && "Choose Masters Specialty"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
       <Panel className="border-l-4 border-l-emerald-500">
         <SectionHeader
           kicker="Milestone Goals"
@@ -1229,50 +1275,6 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
         />
 
         <div className="mt-6 space-y-6">
-          {/* Active Selections / Wizard Trigger Banners (RENDERED AT THE TOP) */}
-          {allPrecedingGoalsCompleted && activeSelNodes.length > 0 && (
-            <div className="space-y-4">
-              {activeSelNodes.map(node => {
-                const isOpen = wizardOpenNodeId === node.id;
-                if (isOpen) return null; // If open as a modal, don't show the banner
-                
-                return (
-                  <div 
-                    key={node.id} 
-                    className="border border-cyan-200 bg-gradient-to-r from-cyan-50/20 to-sky-50/10 p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in"
-                  >
-                    <div className="flex gap-3">
-                      <span className="text-2xl mt-0.5">🧭</span>
-                      <div>
-                        <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
-                        <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
-                          {node.id === "node-board-select" && "Choose your Educational Board & high-school Stream to unlock the next phase milestones."}
-                          {node.id === "node-ug-select" && "Choose your College Tier & UG Course specialization to unlock college semester goals."}
-                          {node.id === "node-postgrad-select" && "Select your post-graduation pathway (Job Placement vs Master's specialization)."}
-                          {node.id === "node-masters-select" && "Choose your Master's course specialization to unlock the PG path goals."}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <button
-                      onClick={() => {
-                        setWizardOpenNodeId(node.id);
-                        setWizardStep(1);
-                        setManuallyClosedId(null);
-                      }}
-                      className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all shrink-0 w-full sm:w-auto text-center"
-                    >
-                      {node.id === "node-board-select" && "Choose Board & Stream"}
-                      {node.id === "node-ug-select" && "Choose Degree & College"}
-                      {node.id === "node-postgrad-select" && "Choose Post-Grad Pathway"}
-                      {node.id === "node-masters-select" && "Choose Masters Specialty"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           {nodesForGoalsList.length > 0 ? (
             nodesForGoalsList.map((node) => {
               const content = (nodeCache || {})[node.id];
@@ -1280,7 +1282,7 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
               const achievements = content?.achievements || [];
               const goalReasons = content?.goal_reasons || {};
               const nodeState = (nodeStates || {})[node.id] || node.state;
-              const isCollapsed = collapsedNodeIds.has(node.id);
+              const isCollapsed = !expandedNodeIds.has(node.id);
 
               const isCheckpoint = node.isCheckpoint || node.type === "checkpoint";
 
@@ -1481,45 +1483,6 @@ function Goals({ profile, completedGoals, onToggleGoal, nodeCache, nodeStates, u
 
             return (
               <div className="mt-8 space-y-6 pt-6 border-t border-slate-200/60">
-                {/* ── UNLOCKED / ACTIVE SELECTIONS WIZARD TRIGGER BANNER ── */}
-                {allPrecedingGoalsCompleted && activeSelNodes.map(node => {
-                  const isOpen = wizardOpenNodeId === node.id;
-                  if (isOpen) return null; // If open as a modal, don't show the banner
-                  
-                  return (
-                    <div 
-                      key={node.id} 
-                      className="border border-cyan-200 bg-gradient-to-r from-cyan-50/20 to-sky-50/10 p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in"
-                    >
-                      <div className="flex gap-3">
-                        <span className="text-2xl mt-0.5">🧭</span>
-                        <div>
-                          <h4 className="font-extrabold text-[15px] text-cyan-950">Action Required: {node.label}</h4>
-                          <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">
-                            {node.id === "node-board-select" && "Choose your Educational Board & high-school Stream to unlock the next phase milestones."}
-                            {node.id === "node-ug-select" && "Choose your College Tier & UG Course specialization to unlock college semester goals."}
-                            {node.id === "node-postgrad-select" && "Select your post-graduation pathway (Job Placement vs Master's specialization)."}
-                            {node.id === "node-masters-select" && "Choose your Master's course specialization to unlock the PG path goals."}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <button
-                        onClick={() => {
-                          setWizardOpenNodeId(node.id);
-                          setWizardStep(1);
-                          setManuallyClosedId(null);
-                        }}
-                        className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all shrink-0 w-full sm:w-auto text-center"
-                      >
-                        {node.id === "node-board-select" && "Choose Board & Stream"}
-                        {node.id === "node-ug-select" && "Choose Degree & College"}
-                        {node.id === "node-postgrad-select" && "Choose Post-Grad Pathway"}
-                        {node.id === "node-masters-select" && "Choose Masters Specialty"}
-                      </button>
-                    </div>
-                  );
-                })}
 
                 {/* ── COMPLETED / HISTORIC SELECTIONS ── */}
                 {doneSelNodes.length > 0 && (
