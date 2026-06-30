@@ -41,7 +41,7 @@ const TIER_OPTIONS = [
 export default function CareerMindmapView({ profile, roadmap, onGoToDashboard }) {
   // ── State ──
   const [financialTier, setFinancialTier] = useState(
-    () => loadFinancialTier() || profile.financialTier || "HIGH"
+    () => loadFinancialTier() || profile?.financialTier || "HIGH"
   );
   
   const [nodeCache, setNodeCache] = useState(() => loadNodeCache());
@@ -318,6 +318,42 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     }
   };
 
+  // ── Selection Point choice select handler ──
+  const handleSelectOption = useCallback((nodeId, option) => {
+    setUserSelections(prev => {
+      const next = { ...prev };
+      if (option === undefined) {
+        delete next[nodeId];
+      } else {
+        next[nodeId] = option;
+      }
+      saveUserSelections(next);
+
+      const nextStates = { ...nodeStates };
+      if (option === undefined) {
+        nextStates[nodeId] = "unlocked";
+      } else {
+        nextStates[nodeId] = "completed";
+      }
+      const updatedStates = reevaluateStates(completedGoals, next, nodeCache, nodeStates);
+      updatedStates[nodeId] = option === undefined ? "unlocked" : "completed";
+
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+      return next;
+    });
+
+    // Expand selection child node auto
+    const node = flatScaffold.find(n => n.id === nodeId);
+    if (node) {
+      setExpandedNodeIds(prev => {
+        const next = new Set(prev);
+        next.add(nodeId);
+        return next;
+      });
+    }
+  }, [userSelections, nodeStates, completedGoals, nodeCache, flatScaffold, reevaluateStates]);
+
   const handleNodeClick = useCallback((node) => {
     if (node.type === "choice-option") {
       const confirmed = window.confirm(`Select "${node.label}"? This will unlock the next milestone path.`);
@@ -327,10 +363,10 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         
         if (parentId === "node-masters-select") {
           const tier = node.selectionTier || "Tier 1";
-          localStorage.setItem(`career-gps:sel-masters-tier-${profile.name}`, tier);
+          localStorage.setItem(`career-gps:sel-masters-tier-${profile?.name || "default"}`, tier);
         } else if (parentId === "node-postgrad-select" && selVal === "→ Enter Workforce") {
           const prog = node.selectionProgression || "SENIOR";
-          localStorage.setItem(`career-gps:sel-progression-${profile.name}`, prog);
+          localStorage.setItem(`career-gps:sel-progression-${profile?.name || "default"}`, prog);
         }
         
         handleSelectOption(parentId, selVal);
@@ -373,7 +409,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     if (node.state !== "locked") {
       fetchNodeContent(node.id, node.type, node.label, node.parentId);
     }
-  }, [nodeCache, completedGoals, userSelections, reevaluateStates, handleSelectOption, profile.name]);
+  }, [nodeCache, completedGoals, userSelections, reevaluateStates, handleSelectOption, profile?.name]);
 
   const handleNodeHover = useCallback((node) => {
     if (node.type === "selection" || node.id.includes("-select") || node.type === "choice-option" || node.type === "choice-option-selected") {
@@ -439,41 +475,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     });
   }, [activeNode, nodeCache, nodeStates, userSelections, reevaluateStates]);
 
-  // ── Selection Point choice select handler ──
-  const handleSelectOption = useCallback((nodeId, option) => {
-    setUserSelections(prev => {
-      const next = { ...prev };
-      if (option === undefined) {
-        delete next[nodeId];
-      } else {
-        next[nodeId] = option;
-      }
-      saveUserSelections(next);
 
-      const nextStates = { ...nodeStates };
-      if (option === undefined) {
-        nextStates[nodeId] = "unlocked";
-      } else {
-        nextStates[nodeId] = "completed";
-      }
-      const updatedStates = reevaluateStates(completedGoals, next, nodeCache, nodeStates);
-      updatedStates[nodeId] = option === undefined ? "unlocked" : "completed";
-
-      setNodeStates(updatedStates);
-      saveNodeStates(updatedStates);
-      return next;
-    });
-
-    // Expand selection child node auto
-    const node = flatScaffold.find(n => n.id === nodeId);
-    if (node) {
-      setExpandedNodeIds(prev => {
-        const next = new Set(prev);
-        next.add(nodeId);
-        return next;
-      });
-    }
-  }, [userSelections, nodeStates, completedGoals, nodeCache, flatScaffold, reevaluateStates]);
 
   // ── Checkpoint display handler ──
   const handleCheckpointClick = async (node) => {
@@ -754,7 +756,7 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
               boxShadow: "0 2px 10px rgba(124, 58, 237, 0.06)",
             }}
           >
-            {profile.name}&apos;s path · {profile.goal?.description || "Career Goal"}
+            {profile?.name || "User"}&apos;s path · {profile?.goal?.description || "Career Goal"}
           </div>
         </div>
 

@@ -516,12 +516,17 @@ export function buildMindmapScaffold(profile, nodeStates = {}, userSelections = 
 // Apply persisted states (locked/unlocked/completed) to scaffold
 // ─────────────────────────────────────────────────────────
 function applyNodeStates(node, stateMap = {}) {
+  if (!node) return;
   const currentMap = stateMap || {};
   if (currentMap[node.id]) {
     node.state = currentMap[node.id];
   }
-  for (const child of node.children) {
-    applyNodeStates(child, currentMap);
+  if (node.children) {
+    for (const child of node.children) {
+      if (child) {
+        applyNodeStates(child, currentMap);
+      }
+    }
   }
 }
 
@@ -738,8 +743,9 @@ export function attachSelectionChildren(selNode, nextChildren, profile, selectio
     choiceNode.selectionValue = selection;
     choiceNode.selectionParentId = selNode.id;
     
-    choiceNode.children = nextChildren;
-    for (const child of nextChildren) {
+    const validChildren = (nextChildren || []).filter(Boolean);
+    choiceNode.children = validChildren;
+    for (const child of validChildren) {
       child.parentId = choiceNode.id;
       child.depth = choiceNode.depth + 0.5;
     }

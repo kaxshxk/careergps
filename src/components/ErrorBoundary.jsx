@@ -3,11 +3,11 @@ import React from "react";
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true };
+    return { hasError: true, error };
   }
 
   componentDidCatch(error, errorInfo) {
@@ -82,12 +82,32 @@ export default class ErrorBoundary extends React.Component {
             
             <p style={{ 
               color: "#a0aec0", 
-              marginBottom: "2rem", 
+              marginBottom: "1rem", 
               lineHeight: "1.6",
               fontSize: "0.95rem"
             }}>
               Something went wrong generating your roadmap. Please refresh and try again.
             </p>
+
+            {this.state.error && (
+              <pre style={{
+                textAlign: "left",
+                background: "rgba(0,0,0,0.5)",
+                padding: "1rem",
+                borderRadius: "8px",
+                fontSize: "0.75rem",
+                fontFamily: "monospace",
+                overflow: "auto",
+                color: "#ff8a8a",
+                width: "100%",
+                maxHeight: "200px",
+                marginBottom: "2rem",
+                border: "1px solid rgba(239, 68, 68, 0.25)",
+                whiteSpace: "pre-wrap"
+              }}>
+                {this.state.error.toString() + "\n" + (this.state.error.stack || "")}
+              </pre>
+            )}
             
             <button
               onClick={this.handleRetry}

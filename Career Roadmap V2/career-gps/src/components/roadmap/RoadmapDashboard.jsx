@@ -70,6 +70,19 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   const [showWizard, setShowWizard] = useState(false);
   const [completedDeepWeeks, setCompletedDeepWeeks] = useState(() => loadCompletedDeepWeeks());
 
+  // Onboarding Choice Wizard States
+  const [wizardOpenNodeId, setWizardOpenNodeId] = useState(null);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [manuallyClosedId, setManuallyClosedId] = useState(null);
+  const [selBoard, setSelBoard] = useState("");
+  const [selStream, setSelStream] = useState("");
+  const [selTier, setSelTier] = useState("");
+  const [selUgCourse, setSelUgCourse] = useState("");
+  const [selPgChoice, setSelPgChoice] = useState("");
+  const [selProgression, setSelProgression] = useState("");
+  const [selMastersTier, setSelMastersTier] = useState("");
+  const [selMastersCourse, setSelMastersCourse] = useState("");
+
   // Mindmap stage-locked lazy state loaded from storage
   const [completedGoals, setCompletedGoals] = useState(() => new Set(loadCompletedGoalsList()));
   const [nodeCache, setNodeCache] = useState(() => loadNodeCache());
@@ -80,6 +93,21 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       return raw ? JSON.parse(raw) : {};
     } catch (e) { return {}; }
   });
+
+  // Reset wizard states when active selection node changes
+  useEffect(() => {
+    if (wizardOpenNodeId) {
+      setWizardStep(1);
+      setSelBoard("");
+      setSelStream("");
+      setSelTier("");
+      setSelUgCourse("");
+      setSelPgChoice("");
+      setSelProgression("");
+      setSelMastersTier("");
+      setSelMastersCourse("");
+    }
+  }, [wizardOpenNodeId]);
 
   // Reevaluate node states
   const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache, currentStates) => {
@@ -459,9 +487,12 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
         <h2 className="mb-6 text-2xl font-bold text-ink">Short-Term & Long-Term Goals</h2>
         <Goals
           profile={profile}
-          roadmap={roadmap}
-          completedMilestones={completedMilestones}
-          onToggleMilestone={toggleMilestone}
+          completedGoals={completedGoals}
+          onToggleGoal={handleToggleGoal}
+          nodeCache={nodeCache}
+          nodeStates={nodeStates}
+          userSelections={userSelections}
+          onSelectOption={handleSelectOption}
         />
       </div>
 

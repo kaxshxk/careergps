@@ -105,7 +105,7 @@ export default function CareerMindmap({
       if (d.type === "choice-option-selected" || isSelectionWithChoice) {
         return d.children?.length ? d.children : null;
       }
-      if (!expandedNodeIds.has(d.id)) {
+      if (!expandedNodeIds || typeof expandedNodeIds.has !== "function" || !expandedNodeIds.has(d.id)) {
         return null;
       }
       return d.children?.length ? d.children : null;
