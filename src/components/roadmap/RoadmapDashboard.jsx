@@ -28,7 +28,15 @@ import {
   getProgressStats,
   getStageLabel,
 } from "../../utils/roadmapHelpers";
-import { buildMindmapScaffold, flattenScaffold, calculateProgress } from "../../data/scaffoldBuilder";
+import {
+  buildMindmapScaffold,
+  flattenScaffold,
+  calculateProgress,
+  getSelectionOptions,
+  getBoardSelectionParts,
+  getBoardSelectionValue,
+  getTieredSelectionParts
+} from "../../data/scaffoldBuilder";
 import DeepOptimizationWizard from "./DeepOptimizationWizard";
 import ResumeAnalyzer from "../pathforge/ResumeAnalyzer";
 import MarketIntelligence from "../pathforge/MarketIntelligence";
@@ -87,16 +95,12 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   const [completedGoals, setCompletedGoals] = useState(() => new Set(loadCompletedGoalsList()));
   const [nodeCache, setNodeCache] = useState(() => loadNodeCache());
   const [nodeStates, setNodeStates] = useState(() => loadNodeStates());
-  const [userSelections, setUserSelections] = useState(() => {
-    try {
-      const raw = localStorage.getItem("career-gps:user-selections");
-      return raw ? JSON.parse(raw) : {};
-    } catch (e) { return {}; }
-  });
+  const [userSelections, setUserSelections] = useState(() => loadUserSelections());
 
   // Reset wizard states when active selection node changes
   useEffect(() => {
     if (wizardOpenNodeId) {
+      const existingSelection = (userSelections || {})[wizardOpenNodeId] || "";
       setWizardStep(1);
       setSelBoard("");
       setSelStream("");
@@ -106,8 +110,38 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       setSelProgression("");
       setSelMastersTier("");
       setSelMastersCourse("");
+
+      if (wizardOpenNodeId === "node-board-select") {
+        const parts = getBoardSelectionParts(existingSelection, profile);
+        setSelBoard(parts.board);
+        setSelStream(parts.stream);
+        if (parts.board && parts.board !== "Polytechnic Diploma" && parts.stream) {
+          setWizardStep(2);
+        }
+      } else if (wizardOpenNodeId === "node-ug-select") {
+        const parts = getTieredSelectionParts(existingSelection);
+        setSelTier(parts.tier);
+        setSelUgCourse(parts.course);
+        if (parts.tier && parts.course) {
+          setWizardStep(2);
+        }
+      } else if (wizardOpenNodeId === "node-postgrad-select") {
+        setSelPgChoice(existingSelection);
+        const savedProgression = localStorage.getItem(`career-gps:sel-progression-${profile.name}`) || "";
+        setSelProgression(savedProgression);
+        if (existingSelection === "→ Enter Workforce" && savedProgression) {
+          setWizardStep(2);
+        }
+      } else if (wizardOpenNodeId === "node-masters-select") {
+        setSelMastersCourse(existingSelection);
+        const savedTier = localStorage.getItem(`career-gps:sel-masters-tier-${profile.name}`) || "";
+        setSelMastersTier(savedTier);
+        if (savedTier && existingSelection) {
+          setWizardStep(2);
+        }
+      }
     }
-  }, [wizardOpenNodeId]);
+  }, [wizardOpenNodeId, userSelections, profile]);
 
   // Reevaluate node states
   const reevaluateStates = useCallback((currentGoals, currentSelections, currentCache, currentStates) => {
@@ -140,7 +174,9 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
           // 1. If parent is a selection point:
           if (node.isSelectionPoint) {
             const isSingleChild = node.children.length === 1;
-            if (selection && (isSingleChild || child.label === selection)) {
+            if (!selection) {
+              nextStates[child.id] = isParentActive ? "unlocked" : "locked";
+            } else if (isSingleChild || child.label === selection) {
               const nextState = "unlocked";
               // Dynamically check if child is completed based on safeGoals checklist
               const childContent = safeCache[child.id];
@@ -208,6 +244,14 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
     walk(root);
     return nextStates;
   }, [profile, nodeStates]);
+
+  useEffect(() => {
+    const updatedStates = reevaluateStates(completedGoals, userSelections, nodeCache, nodeStates);
+    if (JSON.stringify(updatedStates) !== JSON.stringify(nodeStates || {})) {
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+    }
+  }, [completedGoals, userSelections, nodeCache, nodeStates, reevaluateStates]);
 
   const handleToggleGoal = useCallback((goalText) => {
     setCompletedGoals(prev => {
@@ -395,47 +439,41 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
   else if (fieldType === "COMMERCE") recPgCourse = "MBA (Management/Finance)";
   else if (fieldType === "LAW" || fieldType === "ARTS") recPgCourse = "MA (Arts/Humanities/Law)";
 
-  const streamOptions = useMemo(() => {
-    const fieldType = profile.field?.type || "TECH";
-    if (fieldType === "TECH") {
-      return [
-        { value: "Science (MPC)", title: "Science Stream (MPC)", desc: "Maths, Physics, and Chemistry. The standard analytical track for engineering and computer science." },
-        { value: "MEC", title: "MEC Stream", desc: "Mathematics, Economics, and Commerce. A great business-tech track for software product management, finance systems, and analytics." },
-        { value: "Science (MPC + CS)", title: "Science Stream (MPC + Computer Science)", desc: "Maths, Physics, Chemistry, and Computer Science. Ideal foundation for Software Engineering." },
-      ];
-    } else if (fieldType === "MEDICINE") {
-      return [
-        { value: "Science (BiPC)", title: "Science Stream (BiPC)", desc: "Biology, Physics, and Chemistry. The standard pre-medical track for clinical medicine, pharmacy, and healthcare research." },
-        { value: "Science (PCMB)", title: "Science Stream (PCMB)", desc: "Physics, Chemistry, Mathematics, and Biology. Best for bio-informatics, medical software, and bio-tech engineering." },
-        { value: "Science (PCB + Biotech)", title: "Science Stream (PCB + Biotechnology)", desc: "Physics, Chemistry, Biology, and Biotechnology. Focused on biomedical research, lab diagnostics, and pharma tech." },
-      ];
-    } else if (fieldType === "COMMERCE") {
-      return [
-        { value: "MEC", title: "MEC Stream", desc: "Mathematics, Economics, and Commerce. Strong quantitative foundation for finance, auditing, and corporate analytics." },
-        { value: "CEC", title: "CEC Stream", desc: "Civics, Economics, and Commerce. Focused on business administration, commerce law, and entrepreneurship." },
-        { value: "Commerce (with CS/IP)", title: "Commerce Stream (with CS/IP)", desc: "Commerce, Business, and IT/Computer Science. Tailored for E-Commerce, Fintech, and database management." },
-      ];
-    } else if (fieldType === "LAW") {
-      return [
-        { value: "Arts/Humanities (HEC)", title: "Arts Stream (HEC)", desc: "History, Economics, and Civics. Strong analytical foundation for public policy, law, and corporate affairs." },
-        { value: "MEC", title: "MEC Stream", desc: "Mathematics, Economics, and Commerce. Excellent for corporate law, taxation, and business compliance." },
-        { value: "Science (PCM)", title: "Science Stream (PCM)", desc: "Physics, Chemistry, and Mathematics. Excellent analytical foundation for intellectual property and patent law careers." },
-      ];
-    } else if (fieldType === "DESIGN" || fieldType === "ARTS") {
-      return [
-        { value: "Arts/Humanities", title: "Arts & Humanities Stream", desc: "History, Geography, and Psychology. Ideal for creative writing, visual design, and communication strategies." },
-        { value: "Science (PCM)", title: "Science Stream (PCM)", desc: "Physics, Chemistry, and Mathematics. Perfect for game design, interaction design, and UX/UI technology." },
-        { value: "Commerce (with CS/IP)", title: "Commerce Stream (with CS/IP)", desc: "Commerce, Business, and IT. Perfect for digital media, design agencies, and e-commerce product design." },
-      ];
-    } else {
-      // General default
-      return [
-        { value: "Science (PCM)", title: "Science Stream (PCM)", desc: "Physics, Chemistry, and Mathematics. Prepares for engineering, tech, and research." },
-        { value: "Commerce (with Math)", title: "Commerce Stream (with Math)", desc: "Accountancy, Business Studies, Economics, and Math. Prepares for finance, business, and analytics." },
-        { value: "Arts/Humanities (with Math)", title: "Arts & Humanities Stream (with Math)", desc: "History, Economics, Civics, and Math. Prepares for law, policy, design, and economics." },
-      ];
-    }
+  const boardSelectionOptions = useMemo(() => {
+    return getSelectionOptions("node-board-select", profile);
   }, [profile]);
+
+  const boardOptions = useMemo(() => {
+    const byBoard = new Map();
+    boardSelectionOptions.forEach(opt => {
+      if (!byBoard.has(opt.board)) {
+        byBoard.set(opt.board, {
+          value: opt.board,
+          title: opt.board === "CBSE"
+            ? "CBSE Board"
+            : opt.board === "State Board (Inter)"
+            ? "State Board / Intermediate"
+            : "Polytechnic Diploma",
+          desc: opt.board === "CBSE"
+            ? "Central Board of Secondary Education. Standardized curriculum, ideal for competitive prep."
+            : opt.board === "State Board (Inter)"
+            ? "Region-specific curriculum, focused on state university tracks."
+            : "A technical/vocational pathway leading directly into practical domains."
+        });
+      }
+    });
+    return Array.from(byBoard.values());
+  }, [boardSelectionOptions]);
+
+  const boardStreamOptions = useMemo(() => {
+    return boardSelectionOptions
+      .filter(opt => opt.board === selBoard && opt.stream)
+      .map(opt => ({
+        value: opt.stream,
+        title: opt.stream,
+        desc: opt.desc,
+      }));
+  }, [boardSelectionOptions, selBoard]);
 
   const ugCourseOptions = useMemo(() => {
     const fieldType = profile.field?.type || "TECH";
@@ -860,15 +898,12 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
                       </div>
                       
                       <div className="grid gap-3">
-                        {[
-                          { value: "CBSE", title: "CBSE Board", desc: "Central Board of Secondary Education. Standardized curriculum, ideal for competitive prep." },
-                          { value: "State Board (Inter)", title: "State Board / Intermediate", desc: "Region-specific curriculum, focused on state university tracks." },
-                          { value: "Polytechnic Diploma", title: "Polytechnic Diploma", desc: "A technical/vocational pathway leading directly into practical domains." }
-                        ].map(opt => (
+                        {boardOptions.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => {
                               setSelBoard(opt.value);
+                              setSelStream("");
                               if (opt.value === "Polytechnic Diploma") {
                                 setSelStream(""); // Diploma has no high-school streams
                               }
@@ -899,7 +934,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
                       </div>
 
                       <div className="grid gap-3">
-                        {streamOptions.map(opt => (
+                        {boardStreamOptions.map(opt => (
                           <button
                             key={opt.value}
                             onClick={() => setSelStream(opt.value)}
@@ -1219,7 +1254,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
                   }
                   onClick={() => {
                     if (wizardNode.id === "node-board-select") {
-                      const val = selBoard === "Polytechnic Diploma" ? selBoard : `${selBoard} - ${selStream}`;
+                      const val = getBoardSelectionValue(selBoard, selStream, profile);
                       handleSelectOption(wizardNode.id, val);
                     } else if (wizardNode.id === "node-ug-select") {
                       handleSelectOption(wizardNode.id, `${selTier} - ${selUgCourse}`);

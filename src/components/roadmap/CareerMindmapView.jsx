@@ -119,7 +119,9 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
         // 1. If parent is a selection point:
         if (node.isSelectionPoint) {
           const isSingleChild = node.children.length === 1;
-          if (selection && (isSingleChild || child.label === selection)) {
+          if (!selection) {
+            nextStates[child.id] = isParentActive ? "unlocked" : "locked";
+          } else if (isSingleChild || child.label === selection) {
             const nextState = "unlocked";
             // Dynamically check if child is completed based on safeGoals checklist
             const childContent = safeCache[child.id];
@@ -187,6 +189,14 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
     walk(root);
     return nextStates;
   }, [profile, nodeStates]);
+
+  useEffect(() => {
+    const updatedStates = reevaluateStates(completedGoals, userSelections, nodeCache, nodeStates);
+    if (JSON.stringify(updatedStates) !== JSON.stringify(nodeStates || {})) {
+      setNodeStates(updatedStates);
+      saveNodeStates(updatedStates);
+    }
+  }, [completedGoals, userSelections, nodeCache, nodeStates, reevaluateStates]);
 
   // Eagerly fetch starting node content on mount
   useEffect(() => {
@@ -384,15 +394,6 @@ export default function CareerMindmapView({ profile, roadmap, onGoToDashboard })
 
     // Expand selection node on click
     if (node.type === "selection" || node.id.includes("-select")) {
-      setExpandedNodeIds(prev => {
-        const next = new Set(prev);
-        if (next.has(node.id)) {
-          next.delete(node.id);
-        } else {
-          next.add(node.id);
-        }
-        return next;
-      });
       return;
     }
 

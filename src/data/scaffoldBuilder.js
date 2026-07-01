@@ -614,38 +614,38 @@ export function getSelectionOptions(nodeId, profile) {
   if (nodeId === "node-board-select") {
     if (fieldType === "TECH") {
       return [
-        { value: "CBSE - Science (MPC)", label: "CBSE - Science (MPC)", desc: "CBSE board with Maths, Physics, Chemistry." },
-        { value: "State Board (Inter) - MEC", label: "State Board - MEC", desc: "State Board with Maths, Economics, Commerce." },
-        { value: "CBSE - Science (MPC + CS)", label: "CBSE - Science (MPC + CS)", desc: "CBSE board with MPC and Computer Science." },
-        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+        { value: "CBSE - Science (MPC)", label: "CBSE - Science (MPC)", board: "CBSE", stream: "Science (MPC)", desc: "CBSE board with Maths, Physics, Chemistry." },
+        { value: "State Board (Inter) - MEC", label: "State Board - MEC", board: "State Board (Inter)", stream: "MEC", desc: "State Board with Maths, Economics, Commerce." },
+        { value: "CBSE - Science (MPC + CS)", label: "CBSE - Science (MPC + CS)", board: "CBSE", stream: "Science (MPC + CS)", desc: "CBSE board with MPC and Computer Science." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", board: "Polytechnic Diploma", stream: "", desc: "Technical diploma track." }
       ];
     } else if (fieldType === "MEDICINE") {
       return [
-        { value: "CBSE - Science (BiPC)", label: "CBSE - Science (BiPC)", desc: "CBSE board with Biology, Physics, Chemistry." },
-        { value: "State Board (Inter) - Science (PCMB)", label: "State Board - Science (PCMB)", desc: "State Board with PCMB." },
-        { value: "CBSE - Science (PCB + Biotech)", label: "CBSE - Science (PCB + Biotech)", desc: "CBSE board with Biology and Biotechnology." },
-        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+        { value: "CBSE - Science (BiPC)", label: "CBSE - Science (BiPC)", board: "CBSE", stream: "Science (BiPC)", desc: "CBSE board with Biology, Physics, Chemistry." },
+        { value: "State Board (Inter) - Science (PCMB)", label: "State Board - Science (PCMB)", board: "State Board (Inter)", stream: "Science (PCMB)", desc: "State Board with PCMB." },
+        { value: "CBSE - Science (PCB + Biotech)", label: "CBSE - Science (PCB + Biotech)", board: "CBSE", stream: "Science (PCB + Biotech)", desc: "CBSE board with Biology and Biotechnology." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", board: "Polytechnic Diploma", stream: "", desc: "Technical diploma track." }
       ];
     } else if (fieldType === "COMMERCE") {
       return [
-        { value: "CBSE - MEC", label: "CBSE - MEC", desc: "CBSE board with Maths, Economics, Commerce." },
-        { value: "State Board (Inter) - CEC", label: "State Board - CEC", desc: "State Board with Civics, Economics, Commerce." },
-        { value: "CBSE - Commerce (with CS/IP)", label: "CBSE - Commerce (with CS/IP)", desc: "CBSE board with Commerce and Computer Science/IP." },
-        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+        { value: "CBSE - MEC", label: "CBSE - MEC", board: "CBSE", stream: "MEC", desc: "CBSE board with Maths, Economics, Commerce." },
+        { value: "State Board (Inter) - CEC", label: "State Board - CEC", board: "State Board (Inter)", stream: "CEC", desc: "State Board with Civics, Economics, Commerce." },
+        { value: "CBSE - Commerce (with CS/IP)", label: "CBSE - Commerce (with CS/IP)", board: "CBSE", stream: "Commerce (with CS/IP)", desc: "CBSE board with Commerce and Computer Science/IP." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", board: "Polytechnic Diploma", stream: "", desc: "Technical diploma track." }
       ];
     } else if (fieldType === "LAW") {
       return [
-        { value: "CBSE - Arts/Humanities (HEC)", label: "CBSE - Arts/Humanities (HEC)", desc: "CBSE board with History, Economics, Civics." },
-        { value: "State Board (Inter) - MEC", label: "State Board - MEC", desc: "State Board with MEC." },
-        { value: "CBSE - Science (PCM)", label: "CBSE - Science (PCM)", desc: "CBSE board with Physics, Chemistry, Maths." },
-        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+        { value: "CBSE - Arts/Humanities (HEC)", label: "CBSE - Arts/Humanities (HEC)", board: "CBSE", stream: "Arts/Humanities (HEC)", desc: "CBSE board with History, Economics, Civics." },
+        { value: "State Board (Inter) - MEC", label: "State Board - MEC", board: "State Board (Inter)", stream: "MEC", desc: "State Board with MEC." },
+        { value: "CBSE - Science (PCM)", label: "CBSE - Science (PCM)", board: "CBSE", stream: "Science (PCM)", desc: "CBSE board with Physics, Chemistry, Maths." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", board: "Polytechnic Diploma", stream: "", desc: "Technical diploma track." }
       ];
     } else {
       return [
-        { value: "CBSE - Science (PCM)", label: "CBSE - Science (PCM)", desc: "CBSE board with PCM." },
-        { value: "State Board (Inter) - Commerce (with Math)", label: "State Board - Commerce (with Math)", desc: "State Board with Commerce & Math." },
-        { value: "CBSE - Arts/Humanities (with Math)", label: "CBSE - Arts/Humanities (with Math)", desc: "CBSE board with Arts/Humanities and Math." },
-        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", desc: "Technical diploma track." }
+        { value: "CBSE - Science (PCM)", label: "CBSE - Science (PCM)", board: "CBSE", stream: "Science (PCM)", desc: "CBSE board with PCM." },
+        { value: "State Board (Inter) - Commerce (with Math)", label: "State Board - Commerce (with Math)", board: "State Board (Inter)", stream: "Commerce (with Math)", desc: "State Board with Commerce & Math." },
+        { value: "CBSE - Arts/Humanities (with Math)", label: "CBSE - Arts/Humanities (with Math)", board: "CBSE", stream: "Arts/Humanities (with Math)", desc: "CBSE board with Arts/Humanities and Math." },
+        { value: "Polytechnic Diploma", label: "Polytechnic Diploma", board: "Polytechnic Diploma", stream: "", desc: "Technical diploma track." }
       ];
     }
   }
@@ -726,6 +726,35 @@ export function getSelectionOptions(nodeId, profile) {
   }
 
   return [];
+}
+
+export function getBoardSelectionParts(value, profile) {
+  if (!value) return { board: "", stream: "" };
+  const match = getSelectionOptions("node-board-select", profile).find(opt => opt.value === value);
+  if (match) return { board: match.board || "", stream: match.stream || "" };
+  if (value === "Polytechnic Diploma") return { board: "Polytechnic Diploma", stream: "" };
+  const separatorIndex = value.indexOf(" - ");
+  if (separatorIndex === -1) return { board: value, stream: "" };
+  return {
+    board: value.slice(0, separatorIndex),
+    stream: value.slice(separatorIndex + 3),
+  };
+}
+
+export function getBoardSelectionValue(board, stream, profile) {
+  if (!board) return "";
+  if (board === "Polytechnic Diploma") return board;
+  const match = getSelectionOptions("node-board-select", profile).find(
+    opt => opt.board === board && opt.stream === stream
+  );
+  return match?.value || (stream ? `${board} - ${stream}` : board);
+}
+
+export function getTieredSelectionParts(value) {
+  if (!value) return { tier: "", course: "" };
+  const match = value.match(/^(Tier\s+\d)\s+-\s+(.+)$/);
+  if (!match) return { tier: "", course: value };
+  return { tier: match[1], course: match[2] };
 }
 
 export function attachSelectionChildren(selNode, nextChildren, profile, selections) {
